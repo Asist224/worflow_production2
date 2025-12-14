@@ -1,0 +1,474 @@
+{
+  "name": "📊 Email Analysis Retrieval [Production RU]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📊 Email Analysis Retrieval - Получение Результатов Анализа\n\n### Описание\nЭтот workflow предоставляет API для получения сохраненных результатов\nанализа email-переписки: эмоциональный тон, lead scoring, рекомендации.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `api_key` — ваш API ключ для защиты endpoint\n   - `rate_limit_window_ms` — окно для rate limiting (мс)\n   - `rate_limit_max_requests` — максимум запросов в окне\n   - Название таблицы PostgreSQL\n\n2. **Подключите PostgreSQL** credential к узлам БД\n\n3. **Активируйте workflow**\n\n---\n\n### 📡 API Endpoints\n\n#### 1. Получить анализ одного email\n**GET** `/webhook/get-email-analysis?email=client@example.com`\n\n**Headers:**\n```\nx-api-key: ваш_api_key\n```\n\n**Query параметры:**\n- `email` — email клиента\n- `type` — тип анализа (default: `single`)\n\n---\n\n#### 2. Получить все анализы\n**GET** `/webhook/get-all-email-analysis`\n\n**Headers:**\n```\nx-api-key: ваш_api_key\n```\n\n**Query параметры (опционально):**\n- `days` — за сколько дней (default: все)\n- `language` — фильтр по языку\n\n---\n\n### 📊 Формат ответа\n\n```json\n{\n  \"found\": true,\n  \"email\": \"client@example.com\",\n  \"emotionalTone\": {...},\n  \"leadScoring\": {...},\n  \"recommendations\": [...]\n}\n```"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        -350
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max_requests",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "table-analysis",
+              "name": "table_email_dialog_analysis",
+              "value": "email_dialog_analysis",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-node",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -320,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "path": "get-email-analysis",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "87b2128f-d0b6-4b5a-a241-e6f3ecafa74b",
+      "name": "🌐 Webhook: Get Single Analysis",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        -144
+      ],
+      "webhookId": "get-email-analysis-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Get Single Analysis').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -144
+      ],
+      "id": "96443ee0-1161-4c87-aed4-ab85ace71bea",
+      "name": "🔐 Security Check (Single)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "auth-condition",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        -144
+      ],
+      "id": "9cf3bea6-0c90-416f-b8fe-1fc7677aa653",
+      "name": "🔀 Auth Check (Single)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.error }}",
+        "options": {
+          "responseCode": "={{ $json.error.status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        -32
+      ],
+      "id": "62348eb8-3d12-4dd7-a819-95dac6bd63d0",
+      "name": "❌ Error Response (Single)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n    email,\n    thread_id,\n    user_name,\n    analysis_type,\n    language,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    statistics,\n    satisfaction_percentage,\n    lead_scoring,\n    created_at,\n    updated_at\nFROM {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }} \nWHERE email = '{{ $json.query.email }}' \nAND analysis_type = '{{ $json.query.type || 'single' }}' \nORDER BY created_at DESC \nLIMIT 1",
+        "options": {}
+      },
+      "id": "1b11646e-ece6-4549-9af7-451683ece96f",
+      "name": "📋 Get Analysis from DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        336,
+        -208
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0]?.json;\nif (!data) {\n  return [{json: {found: false, message: 'Анализ не найден'}}];\n}\n\n// Парсим JSONB поля\nlet emotionalTone = data.emotional_tone;\nlet customerNeeds = data.customer_needs;\nlet missedOpportunities = data.missed_opportunities;\nlet recommendations = data.recommendations;\nlet statistics = data.statistics;\nlet leadScoring = data.lead_scoring;\n\n// Проверяем и парсим если это строки\nif (typeof emotionalTone === 'string') {\n  try { emotionalTone = JSON.parse(emotionalTone); } catch(e) {}\n}\nif (typeof customerNeeds === 'string') {\n  try { customerNeeds = JSON.parse(customerNeeds); } catch(e) {}\n}\nif (typeof missedOpportunities === 'string') {\n  try { missedOpportunities = JSON.parse(missedOpportunities); } catch(e) {}\n}\nif (typeof recommendations === 'string') {\n  try { recommendations = JSON.parse(recommendations); } catch(e) {}\n}\nif (typeof statistics === 'string') {\n  try { statistics = JSON.parse(statistics); } catch(e) {}\n}\nif (typeof leadScoring === 'string') {\n  try { leadScoring = JSON.parse(leadScoring); } catch(e) {}\n}\n\nreturn [{\n  json: {\n    found: true,\n    email: data.email,\n    threadId: data.thread_id,\n    userName: data.user_name,\n    analysisType: data.analysis_type,\n    language: data.language,\n    emotionalTone: emotionalTone,\n    customerNeeds: customerNeeds,\n    missedOpportunities: missedOpportunities,\n    recommendations: recommendations,\n    statistics: statistics,\n    satisfactionPercentage: data.satisfaction_percentage || emotionalTone?.satisfaction || 0,\n    leadScoring: leadScoring,\n    createdAt: data.created_at,\n    updatedAt: data.updated_at\n  }\n}];"
+      },
+      "id": "e8571a60-5e64-49e2-8810-badea478cb6a",
+      "name": "📝 Format Single Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "f9100a59-bc25-4a2a-9422-d4fdde78b8fd",
+      "name": "📤 Send Single Analysis",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        736,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "path": "get-all-email-analysis",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "27b3cdcb-0e15-4ee3-9883-bcd9751594fe",
+      "name": "🌐 Webhook: Get All Analysis",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        208
+      ],
+      "webhookId": "get-all-email-analysis-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Get All Analysis').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        208
+      ],
+      "id": "ed82d0cf-5ef8-4f85-9bd4-6d6a75456b1e",
+      "name": "🔐 Security Check (All)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "auth-condition",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        192,
+        208
+      ],
+      "id": "dfc56595-b71b-43eb-9e78-8744c551ec79",
+      "name": "🔀 Auth Check (All)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.error }}",
+        "options": {
+          "responseCode": "={{ $json.error.status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        368,
+        320
+      ],
+      "id": "ef7a8bd9-a672-4cf9-a0e0-0b9c2361938a",
+      "name": "❌ Error Response (All)"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT DISTINCT ON (email) \n    email,\n    thread_id,\n    user_name,\n    analysis_type,\n    language,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    statistics,\n    satisfaction_percentage,\n    lead_scoring,\n    created_at,\n    updated_at\nFROM {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }} \nWHERE analysis_type = 'single'\n    {{ $json.query?.days ? \"AND created_at >= NOW() - INTERVAL '\" + $json.query.days + \" days'\" : \"\" }}\n    {{ $json.query?.language ? \"AND language = '\" + $json.query.language + \"'\" : \"\" }}\nORDER BY email, created_at DESC",
+        "options": {}
+      },
+      "id": "752b2232-158b-4c55-8cf3-f742d37952dd",
+      "name": "📋 Get All Analysis from DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        368,
+        144
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const analyses = {};\n\nitems.forEach(item => {\n  const data = item.json;\n  \n  // Парсим JSONB поля\n  let emotionalTone = data.emotional_tone;\n  let leadScoring = data.lead_scoring;\n  \n  if (typeof emotionalTone === 'string') {\n    try { emotionalTone = JSON.parse(emotionalTone); } catch(e) {}\n  }\n  if (typeof leadScoring === 'string') {\n    try { leadScoring = JSON.parse(leadScoring); } catch(e) {}\n  }\n  \n  analyses[data.email] = {\n    emotionalTone: emotionalTone?.overall || 'unknown',\n    satisfactionPercentage: data.satisfaction_percentage || emotionalTone?.satisfaction || 0,\n    leadScoring: leadScoring?.score || 0,\n    leadTemperature: leadScoring?.temperature || 'cold',\n    createdAt: data.created_at,\n    updatedAt: data.updated_at\n  };\n});\n\nreturn [{json: {analyses}}];"
+      },
+      "id": "c2abde7a-ad35-45ad-bbe1-d525a1dd0045",
+      "name": "📝 Format All Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "29bbd3db-72dc-4acc-bd26-aec8bbea9e10",
+      "name": "📤 Send All Analysis",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        768,
+        144
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⚙️ CONFIG": {
+      "main": [
+        [
+          {
+            "node": "🌐 Webhook: Get Single Analysis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🌐 Webhook: Get All Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook: Get Single Analysis": {
+      "main": [
+        [
+          {
+            "node": "🔐 Security Check (Single)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Security Check (Single)": {
+      "main": [
+        [
+          {
+            "node": "🔀 Auth Check (Single)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Auth Check (Single)": {
+      "main": [
+        [
+          {
+            "node": "📋 Get Analysis from DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Error Response (Single)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Get Analysis from DB": {
+      "main": [
+        [
+          {
+            "node": "📝 Format Single Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Format Single Analysis": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Single Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook: Get All Analysis": {
+      "main": [
+        [
+          {
+            "node": "🔐 Security Check (All)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Security Check (All)": {
+      "main": [
+        [
+          {
+            "node": "🔀 Auth Check (All)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Auth Check (All)": {
+      "main": [
+        [
+          {
+            "node": "📋 Get All Analysis from DB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Error Response (All)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Get All Analysis from DB": {
+      "main": [
+        [
+          {
+            "node": "📝 Format All Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Format All Analysis": {
+      "main": [
+        [
+          {
+            "node": "📤 Send All Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "dd169c96-b08a-4d25-b307-dab9c778b9ea",
+  "meta": {
+    "instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"
+  },
+  "id": "HPt567FSlyDaZUia",
+  "tags": []
+}
