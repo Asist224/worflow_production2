@@ -1,0 +1,464 @@
+{
+  "name": "📧 Email Automation Main_1 [Production RU]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📧 Email Automation Main - Часть 1\n\n### Описание\nАвтоматическая обработка диалогов и отправка email.\nАнализирует чат-диалоги и принимает решение об отправке писем.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `sendpulse_api_id` — ваш SendPulse API ID\n   - `sendpulse_api_secret` — ваш SendPulse API Secret\n   - `telegram_chat_id` — ID чата для уведомлений\n   - Названия таблиц PostgreSQL\n   - ID адресных книг SendPulse\n\n2. **Подключите credentials:**\n   - PostgreSQL\n   - Gmail OAuth2\n   - Google Drive OAuth2\n   - Telegram Bot\n   - Google Gemini API\n\n3. **Настройте интервал** в Schedule Trigger\n\n4. **Активируйте workflow**\n\n---\n\n### ⚙️ Что делает эта часть:\n- Получает необработанные диалоги из БД\n- Анализирует их с помощью AI (Gemini)\n- Принимает решение об отправке email\n- Отправляет письма через Gmail\n- Сохраняет записи в БД\n- Добавляет контакты в SendPulse\n- Уведомляет менеджера в Telegram"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-21400, -2700]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "sendpulse-id", "name": "sendpulse_api_id", "value": "YOUR_SENDPULSE_API_ID", "type": "string"},
+            {"id": "sendpulse-secret", "name": "sendpulse_api_secret", "value": "YOUR_SENDPULSE_API_SECRET", "type": "string"},
+            {"id": "telegram-chat", "name": "telegram_chat_id", "value": "-1002588885971", "type": "string"},
+            {"id": "table-chat-ru", "name": "table_chat_histories_ru", "value": "n8n_chat_histories_ru", "type": "string"},
+            {"id": "table-chat-en", "name": "table_chat_histories_en", "value": "n8n_chat_histories_en", "type": "string"},
+            {"id": "table-email-tracking", "name": "table_email_tracking", "value": "email_tracking", "type": "string"},
+            {"id": "table-followups", "name": "table_email_follow_ups", "value": "email_follow_ups", "type": "string"},
+            {"id": "table-sendpulse", "name": "table_sendpulse_sync", "value": "sendpulse_sync", "type": "string"},
+            {"id": "addressbook-leads-ru", "name": "addressbook_leads_ru", "value": 1590447, "type": "number"},
+            {"id": "addressbook-leads-en", "name": "addressbook_leads_en", "value": 1591644, "type": "number"},
+            {"id": "addressbook-customers-ru", "name": "addressbook_customers_ru", "value": 1590611, "type": "number"},
+            {"id": "addressbook-customers-en", "name": "addressbook_customers_en", "value": 1591645, "type": "number"},
+            {"id": "file-pdf-ru", "name": "file_pdf_ru", "value": "1xVXrc_yDynRHugGa-tu7gZYB72N8uieF", "type": "string"},
+            {"id": "file-pdf-en", "name": "file_pdf_en", "value": "1Hu5FXAtGDGuoZ_h7CnoE_0rCnKpSCrNq", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-main",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-20976, -2448]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "minutes", "minutesInterval": 3}]
+        }
+      },
+      "id": "f6694a9b-4b8d-4ab4-9430-931fae1a9ce9",
+      "name": "⏰ Schedule Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-21136, -2448]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=WITH recent_messages AS (\n    SELECT \n        session_id,\n        MAX(created_at) as last_message_time,\n        COUNT(*) as message_count\n    FROM (\n        SELECT session_id, created_at FROM {{ $json.table_chat_histories_ru }}\n        WHERE created_at > NOW() - INTERVAL '1 hours'\n        UNION ALL\n        SELECT session_id, created_at FROM {{ $json.table_chat_histories_en }}\n        WHERE created_at > NOW() - INTERVAL '1 hours'\n    ) all_messages\n    GROUP BY session_id\n    HAVING COUNT(*) >= 3\n),\nalready_sent AS (\n    SELECT DISTINCT session_id\n    FROM {{ $json.table_email_tracking }}\n    WHERE status = 'sent'\n      AND email_type IN ('welcome_pdf', 'info_request', 'pricing_info', 'setup_guide')\n      AND sent_at > NOW() - INTERVAL '7 days'\n),\nnot_processed AS (\n    SELECT rm.session_id\n    FROM recent_messages rm\n    LEFT JOIN already_sent as_sent ON rm.session_id = as_sent.session_id\n    WHERE as_sent.session_id IS NULL\n)\nSELECT \n    ac.id, ac.session_id, ac.message_type, ac.content, ac.timestamp, ac.platform, ac.language\nFROM (\n    SELECT id, session_id, message::json->>'type' as message_type, message::json->>'content' as content, created_at as timestamp, platform, 'ru' as language\n    FROM {{ $json.table_chat_histories_ru }}\n    WHERE session_id IN (SELECT session_id FROM not_processed)\n    UNION ALL\n    SELECT id, session_id, message::json->>'type' as message_type, message::json->>'content' as content, created_at as timestamp, platform, 'en' as language\n    FROM {{ $json.table_chat_histories_en }}\n    WHERE session_id IN (SELECT session_id FROM not_processed)\n) ac\nORDER BY ac.session_id, ac.timestamp;",
+        "options": {}
+      },
+      "id": "62ec3e34-1de5-4979-a696-1bda47d2ecdd",
+      "name": "📥 Get Unprocessed Dialogs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-20736, -2448],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\nconst dialogs = items;\nconst sessions = {};\n\ndialogs.forEach(item => {\n    const data = item.json;\n    if (!sessions[data.session_id]) {\n        sessions[data.session_id] = {\n            messages: [],\n            language: data.language,\n            platform: data.platform\n        };\n    }\n    sessions[data.session_id].messages.push({\n        type: data.message_type,\n        content: data.content,\n        timestamp: data.timestamp\n    });\n});\n\nconst dialogsForAnalysis = Object.entries(sessions).map(([sessionId, data]) => {\n    return {\n        sessionId: sessionId,\n        language: data.language,\n        platform: data.platform,\n        conversation: data.messages.map(msg => \n            `${msg.type === 'human' ? 'Клиент' : 'Бот'}: ${msg.content}`\n        ).join('\\n'),\n        messageCount: data.messages.length,\n        lastMessage: data.messages[data.messages.length - 1],\n        config: config\n    };\n});\n\nreturn dialogsForAnalysis.map(d => ({json: d}));"
+      },
+      "id": "a4d5fc10-5275-4dba-a175-3c16d217862d",
+      "name": "📋 Format Dialogs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20528, -2448]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Анализ диалога:\nSession ID: {{ $json.sessionId }}\nЯзык: {{ $json.language }}\nПлатформа: {{ $json.platform }}\n\nДиалог:\n{{ $json.conversation }}",
+        "options": {
+          "systemMessage": "# Роль: Email Marketing AI Agent\n\nТы - специалист по email-маркетингу и анализу диалогов.\n\n# Задача:\nПроанализируй диалог и определи необходимость отправки email.\n\n# Формат ответа - ТОЛЬКО валидный JSON:\n{\n  \"shouldSendEmail\": true/false,\n  \"reason\": \"Причина решения\",\n  \"emailData\": {\n    \"email\": \"клиент@example.com\",\n    \"name\": \"Имя клиента или null\",\n    \"emailType\": \"welcome_pdf/info_request/pricing_info/setup_guide\",\n    \"subject\": \"Тема письма\",\n    \"language\": \"ru/en\",\n    \"emailContent\": \"HTML контент письма\",\n    \"urgency\": \"high/medium/low\",\n    \"leadScore\": число от 0 до 100\n  }\n}\n\nВозвращай ТОЛЬКО валидный JSON без дополнительного текста!"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [-20320, -2464],
+      "id": "01730bf9-c8da-491a-b9de-89844a77271c",
+      "name": "🤖 Email Decision Agent"
+    },
+    {
+      "parameters": {"options": {}},
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [-20384, -2288],
+      "id": "8315ab8e-a23f-4c4a-aac0-e9be4a922d18",
+      "name": "🧠 Gemini Model",
+      "credentials": {"googlePalmApi": {"id": "abo0BDHSJPM0pgRU", "name": "Google Gemini(PaLM) Api account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\nconst FILE_MAPPINGS = {\n  'welcome_pdf': {'ru': config.file_pdf_ru, 'en': config.file_pdf_en},\n  'strategy': {'ru': config.file_pdf_ru, 'en': config.file_pdf_en}\n};\n\nconst aiOutput = $input.first().json.output || $input.first().json;\nconst formatDialogsData = $items(\"📋 Format Dialogs\")[0].json;\n\nlet emailDecision;\n\ntry {\n    if (typeof aiOutput === 'string') {\n        let cleanJson = aiOutput.replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n        emailDecision = JSON.parse(cleanJson);\n    } else {\n        emailDecision = aiOutput;\n    }\n    \n    if (emailDecision.shouldSendEmail) {\n        const language = emailDecision.emailData?.language || 'ru';\n        const emailType = emailDecision.emailData?.emailType || 'welcome_pdf';\n        const fileId = FILE_MAPPINGS[emailType]?.[language] || FILE_MAPPINGS['welcome_pdf'][language];\n        \n        emailDecision.emailData = {\n            ...emailDecision.emailData,\n            fileId: fileId,\n            attachments: [{driveId: fileId, fileName: `strategy_${language}.pdf`, mimeType: 'application/pdf'}]\n        };\n    }\n    \n    emailDecision.sessionId = formatDialogsData.sessionId;\n    emailDecision.platform = formatDialogsData.platform;\n    emailDecision.processedAt = new Date().toISOString();\n    emailDecision.config = config;\n\n} catch (error) {\n    emailDecision = {\n        shouldSendEmail: false,\n        reason: 'Ошибка парсинга ответа AI',\n        error: error.toString(),\n        sessionId: formatDialogsData?.sessionId || 'unknown',\n        platform: formatDialogsData?.platform || 'unknown',\n        processedAt: new Date().toISOString(),\n        config: config\n    };\n}\n\nreturn [{json: emailDecision}];"
+      },
+      "id": "c921f2a9-4356-4665-ad7b-2d927bdc72d5",
+      "name": "📝 Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20048, -2448]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "check-content", "leftValue": "={{ $json.emailData.emailContent }}||{{ $json.reason }}", "rightValue": 50, "operator": {"type": "string", "operation": "notEmpty", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-19856, -2432],
+      "id": "ba9cfd84-553c-4ea1-a1cc-b384abcf1be5",
+      "name": "🔀 If Valid"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.shouldSendEmail }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true"}, "id": "eda947b2-635d-4137-b710-1b2e4c383b66"}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "05bc971e-42e9-4f62-8f32-6227980b0ff0",
+      "name": "🔀 Should Send Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-19664, -2448]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT COUNT(*) as duplicate_count, '{{ $json.sessionId }}' as session_id, '{{ $json.emailData.email }}' as email, MAX(sent_at) as last_sent_at\nFROM {{ $json.config.table_email_tracking }}\nWHERE session_id = '{{ $json.sessionId }}' AND status = 'sent'\n  AND ((email_type IN ('welcome_pdf', 'info_request', 'pricing_info', 'setup_guide') AND sent_at > NOW() - INTERVAL '7 days')\n    OR (email = '{{ $json.emailData.email }}' AND email_type = '{{ $json.emailData.emailType }}' AND sent_at > NOW() - INTERVAL '30 days'));",
+        "options": {}
+      },
+      "id": "38ec1c21-bb86-44e8-ba17-10daa00494ea",
+      "name": "🔍 Check Duplicate",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-19536, -2592],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const emailData = $items(\"📝 Parse AI Response\")[0].json;\nconst duplicateCheck = $input.first().json;\n\nreturn [{\n  json: {\n    ...emailData,\n    shouldSendEmail: emailData.shouldSendEmail,\n    emailData: emailData.emailData,\n    sessionId: emailData.sessionId,\n    platform: emailData.platform,\n    duplicate_count: duplicateCheck.duplicate_count,\n    config: emailData.config\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-19328, -2592],
+      "id": "efcf6725-437f-424c-8126-4f30ca836019",
+      "name": "🔗 Merge Email Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.duplicate_count }}", "rightValue": "0", "operator": {"type": "string", "operation": "equals"}, "id": "acad2f38-9ae5-4adf-b6eb-25917bb92518"}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "daaccd24-a001-4bd7-b373-b30a91345f03",
+      "name": "🔀 Is New Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-19136, -2592]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {"__rl": true, "value": "={{ $json.emailData.fileId }}", "mode": "id"},
+        "options": {"googleFileConversion": {"conversion": {"docsToFormat": "application/pdf"}}}
+      },
+      "id": "dfc35098-a6b5-4e95-a1dc-635962521de8",
+      "name": "📎 Get Files from Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [-18928, -2656],
+      "credentials": {"googleDriveOAuth2Api": {"id": "2ZNOKD6ZFqAfrDq2", "name": "Google Drive account"}}
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.emailData.email }}",
+        "subject": "={{ $json.emailData.subject }}",
+        "message": "={{ $json.emailData.emailContent }}",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {"attachmentsBinary": [{}]},
+          "senderName": "Cryptomator Team",
+          "replyTo": "support@cryptomator.pro"
+        }
+      },
+      "id": "802c0800-3f57-4b38-9eb1-82ea82d78644",
+      "name": "📤 Send Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-18736, -2656],
+      "credentials": {"gmailOAuth2": {"id": "ev0cwU3ZEXqPZ9wU", "name": "Gmail account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const emailData = $items(\"🔀 Is New Email?\")[0].json;\nconst gmailResponse = $input.first().json;\n\nfunction escapeSql(str) {\n  if (!str) return '';\n  return str.replace(/'/g, \"''\");\n}\n\nreturn [{\n  json: {\n    sessionId: emailData.sessionId || 'unknown',\n    email: emailData.emailData.email,\n    clientName: escapeSql(emailData.emailData.name),\n    emailType: emailData.emailData.emailType || 'welcome_pdf',\n    subject: escapeSql(emailData.emailData.subject),\n    content: escapeSql(emailData.emailData.emailContent),\n    attachments: JSON.stringify(emailData.emailData.attachments || []),\n    status: 'sent',\n    platform: emailData.platform || 'telegram',\n    language: emailData.emailData.language || 'ru',\n    gmailId: gmailResponse.id,\n    gmailThreadId: gmailResponse.threadId,\n    sentAt: new Date().toISOString(),\n    config: emailData.config\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18528, -2656],
+      "id": "bdd71c19-b1f5-40bf-8757-8de6a62267c3",
+      "name": "📝 Prepare Save Data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO {{ $json.config.table_email_tracking }} (\n    session_id, email, client_name, email_type, subject, content, attachments, status, platform, language, sent_at\n) VALUES (\n    '{{ $json.sessionId }}', '{{ $json.email }}', '{{ $json.clientName }}', '{{ $json.emailType }}',\n    '{{ $json.subject }}', '{{ $json.content }}', '{{ $json.attachments }}'::jsonb,\n    '{{ $json.status }}', '{{ $json.platform }}', '{{ $json.language }}', NOW()\n) RETURNING *;",
+        "options": {}
+      },
+      "id": "05159d28-0e08-4d0a-85ac-19c81d9c1772",
+      "name": "💾 Save Email Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-18336, -2656],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const saveResult = $input.first().json;\n\nfunction escapeMarkdown(text) {\n  if (!text) return '';\n  return String(text)\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\\*/g, '\\\\*')\n    .replace(/_/g, '\\\\_')\n    .replace(/\\[/g, '\\\\[')\n    .replace(/\\]/g, '\\\\]')\n    .replace(/\\(/g, '\\\\(')\n    .replace(/\\)/g, '\\\\)')\n    .replace(/~/g, '\\\\~')\n    .replace(/`/g, '\\\\`')\n    .replace(/>/g, '\\\\>')\n    .replace(/#/g, '\\\\#')\n    .replace(/\\+/g, '\\\\+')\n    .replace(/-/g, '\\\\-')\n    .replace(/=/g, '\\\\=')\n    .replace(/\\|/g, '\\\\|')\n    .replace(/\\{/g, '\\\\{')\n    .replace(/\\}/g, '\\\\}')\n    .replace(/\\./g, '\\\\.')\n    .replace(/!/g, '\\\\!');\n}\n\nconst safeName = escapeMarkdown(saveResult.client_name || 'Не указан');\nconst safeEmail = escapeMarkdown(saveResult.email);\nconst safeSubject = escapeMarkdown(saveResult.subject);\nconst safePlatform = escapeMarkdown(saveResult.platform);\n\nconst report = `📧 *Email успешно отправлен\\\\!*\n\n👤 *Клиент:* ${safeName}\n📮 *Email:* ${safeEmail}\n🌐 *Платформа:* ${safePlatform}\n🗣️ *Язык:* ${saveResult.language === 'ru' ? '🇷🇺 Русский' : '🇬🇧 English'}\n\n📎 *Тип письма:* ${escapeMarkdown(saveResult.email_type)}\n📄 *Тема:* ${safeSubject}\n\n✅ *Статус:* ${saveResult.status}\n🆔 *ID записи:* ${saveResult.id}\n\n⏰ *Время:* ${escapeMarkdown(new Date().toLocaleString('ru-RU', {timeZone: 'Europe/Moscow'}))}`;\n\nreturn [{json: {message: report, parse_mode: 'MarkdownV2'}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18128, -2656],
+      "id": "f0300a44-e1d9-4a66-880c-55a0378f8fb1",
+      "name": "📊 Prepare Telegram Report"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $items('⚙️ CONFIG')[0].json.telegram_chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {"appendAttribution": false, "parse_mode": "MarkdownV2"}
+      },
+      "id": "019ac58a-72ac-4beb-99f8-96562e7a5027",
+      "name": "📱 Notify Manager",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-17936, -2656],
+      "credentials": {"telegramApi": {"id": "bHlhE9zUMfwWqM9t", "name": "Manager Telegram Bot"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\nconst email = inputData.email || inputData.from || 'no-email';\nconst threadId = inputData.gmailThreadId || inputData.threadId || 'no-thread';\nconst leadScore = inputData.leadScore || 50;\n\nreturn [{\n  json: {\n    to: email,\n    threadId: threadId,\n    leadScore: leadScore,\n    followUpDays: 3,\n    internalNote: `Первый контакт. Lead Score: ${leadScore}`,\n    config: inputData.config\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18560, -2880],
+      "id": "7e1b6b4a-2121-4474-8854-82615f6ffd59",
+      "name": "📋 Prepare Follow-up Data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO {{ $json.config.table_email_follow_ups }} (email, thread_id, follow_up_date, status, notes, created_at)\nSELECT '{{ $json.to }}', '{{ $json.threadId }}', NOW() + INTERVAL '3 days', 'pending', 'Lead Score: {{ $json.leadScore || 0 }}', NOW()\nWHERE '{{ $json.to }}' != 'undefined' AND '{{ $json.threadId }}' != 'undefined'\n  AND NOT EXISTS (SELECT 1 FROM {{ $json.config.table_email_follow_ups }} WHERE email = '{{ $json.to }}' AND (status = 'pending' OR (status = 'sent' AND sent_at > NOW() - INTERVAL '7 days')));\nSELECT 'Follow-up processed' as status;",
+        "options": {}
+      },
+      "id": "3d3534d5-d07b-4315-9322-6741eb433669",
+      "name": "📅 Schedule Follow-up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-18368, -2880],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}},
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $items('⚙️ CONFIG')[0].json;\n\nreturn [{\n  json: {\n    grant_type: 'client_credentials',\n    client_id: config.sendpulse_api_id,\n    client_secret: config.sendpulse_api_secret,\n    config: config\n  }\n}];"
+      },
+      "id": "62da5d9a-8460-46b2-b4c8-8d27089eae26",
+      "name": "🔐 Prepare SendPulse Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18128, -2896]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.sendpulse.com/oauth/access_token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {"name": "grant_type", "value": "={{ $json.grant_type }}"},
+            {"name": "client_id", "value": "={{ $json.client_id }}"},
+            {"name": "client_secret", "value": "={{ $json.client_secret }}"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "bdfa0e8c-9322-4cfb-b606-01b691b131cd",
+      "name": "🔑 Get SendPulse Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-17936, -2896]
+    },
+    {
+      "parameters": {
+        "jsCode": "const emailData = $items(\"📝 Prepare Save Data\")[0].json;\nconst sendPulseToken = $items(\"🔑 Get SendPulse Token\")[0].json;\nconst config = emailData.config;\n\nconst language = emailData.language || 'ru';\nconst addressbookId = language === 'ru' ? config.addressbook_leads_ru : config.addressbook_leads_en;\nconst customersBookId = language === 'ru' ? config.addressbook_customers_ru : config.addressbook_customers_en;\n\nreturn [{\n  json: {\n    token: sendPulseToken.access_token,\n    tokenType: sendPulseToken.token_type || 'Bearer',\n    addressbookId: addressbookId,\n    customersBookId: customersBookId,\n    emailData: {\n      email: emailData.email,\n      variables: {\n        name: emailData.clientName || '',\n        platform: emailData.platform || 'telegram',\n        session_id: emailData.sessionId,\n        added_date: new Date().toISOString().split('T')[0]\n      }\n    },\n    language: language,\n    config: config\n  }\n}];"
+      },
+      "id": "33ee5fd7-d9b5-49c3-9e31-b4d54d035d83",
+      "name": "📋 Prepare Contact Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17744, -2896]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $json.customersBookId }}/emails/{{ $json.emailData.email }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ $json.tokenType }} {{ $json.token }}"}]},
+        "options": {"response": {"response": {"neverError": true}}}
+      },
+      "id": "99fd0191-eea8-4bcd-9056-fcec54b42577",
+      "name": "🔍 Check if Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-17552, -2896]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.message }}", "rightValue": "Email not found", "operator": {"type": "string", "operation": "contains"}, "id": "6fe44b79-011f-486b-9db5-95bd0caf74e0"}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c7db18a5-eede-4d83-a8f8-3bbf2651aefc",
+      "name": "🔀 Is Not Customer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-17360, -2896]
+    },
+    {
+      "parameters": {
+        "jsCode": "const emailData = $items(\"📝 Prepare Save Data\")[0].json;\nconst sendPulseToken = $items(\"🔑 Get SendPulse Token\")[0].json;\nconst config = emailData.config;\n\nconst language = emailData.language || 'ru';\nconst addressbookId = language === 'ru' ? config.addressbook_leads_ru : config.addressbook_leads_en;\nconst customersBookId = language === 'ru' ? config.addressbook_customers_ru : config.addressbook_customers_en;\n\nreturn [{\n  json: {\n    token: sendPulseToken.access_token,\n    tokenType: sendPulseToken.token_type || 'Bearer',\n    addressbookId: addressbookId,\n    customersBookId: customersBookId,\n    emailData: {\n      email: emailData.email,\n      variables: {\n        name: emailData.clientName || '',\n        platform: emailData.platform || 'telegram',\n        session_id: emailData.sessionId,\n        added_date: new Date().toISOString().split('T')[0]\n      }\n    },\n    language: language,\n    config: config\n  }\n}];"
+      },
+      "id": "4c0a1b08-f5b7-4b1c-9853-1f9b0ed60f37",
+      "name": "📋 Prepare Contact Data2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17200, -3056]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $json.addressbookId }}/emails/{{ $json.emailData.email }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ $json.tokenType }} {{ $json.token }}"}]},
+        "options": {"response": {"response": {"neverError": true}}}
+      },
+      "id": "db13f9ee-4852-4e28-a687-ca6a015d9c0e",
+      "name": "🔍 Check if Already Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-17024, -3056]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.message }}", "rightValue": "Email not found", "operator": {"type": "string", "operation": "contains"}, "id": "check-lead"}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3d7cb5b3-1cdc-46b8-9541-e269be7a6f32",
+      "name": "🔀 Already in Leads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-16848, -3056]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $items(\"📋 Prepare Contact Data2\")[0].json.addressbookId }}/emails",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ $items(\"📋 Prepare Contact Data2\")[0].json.tokenType }} {{ $items(\"📋 Prepare Contact Data2\")[0].json.token }}"}]},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"emails\": [{\n    \"email\": {{ JSON.stringify($items(\"📋 Prepare Contact Data2\")[0].json.emailData.email) }},\n    \"variables\": {\n      \"name\": {{ JSON.stringify($items(\"📋 Prepare Contact Data2\")[0].json.emailData.variables.name) }},\n      \"platform\": {{ JSON.stringify($items(\"📋 Prepare Contact Data2\")[0].json.emailData.variables.platform) }},\n      \"session_id\": {{ JSON.stringify($items(\"📋 Prepare Contact Data2\")[0].json.emailData.variables.session_id) }},\n      \"added_date\": {{ JSON.stringify($items(\"📋 Prepare Contact Data2\")[0].json.emailData.variables.added_date) }}\n    }\n  }]\n}",
+        "options": {}
+      },
+      "id": "61212217-e4b0-4954-a4c4-827920153d58",
+      "name": "➕ Add to SendPulse",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-16656, -3088]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO {{ $items(\"📋 Prepare Contact Data2\")[0].json.config.table_sendpulse_sync }} (email, addressbook_id, addressbook_name, sync_status, sync_date)\nVALUES ('{{ $items(\"📋 Prepare Contact Data2\")[0].json.emailData.email }}', {{ $items(\"📋 Prepare Contact Data2\")[0].json.addressbookId }}, '{{ $items(\"📋 Prepare Contact Data2\")[0].json.language === \"ru\" ? \"leads_ru\" : \"leads_en\" }}', 'added', NOW())\nON CONFLICT (email, addressbook_id) DO UPDATE SET sync_status = 'updated', sync_date = NOW()\nRETURNING *;",
+        "options": {}
+      },
+      "id": "369f55a6-b2ef-425e-8e52-212e17c83d26",
+      "name": "💾 Log SendPulse Sync",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-16496, -3248],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $items(\"📋 Prepare Contact Data\")[0].json;\nreturn [{json: {email: data.emailData.email, status: 'already_customer', message: 'User is already a customer'}}];"
+      },
+      "id": "a083c1b9-cd24-4bc2-ba5c-a838c7096304",
+      "name": "📝 Log Existing Customer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17184, -2800]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⏰ Schedule Check": {"main": [[{"node": "⚙️ CONFIG", "type": "main", "index": 0}]]},
+    "⚙️ CONFIG": {"main": [[{"node": "📥 Get Unprocessed Dialogs", "type": "main", "index": 0}]]},
+    "📥 Get Unprocessed Dialogs": {"main": [[{"node": "📋 Format Dialogs", "type": "main", "index": 0}]]},
+    "📋 Format Dialogs": {"main": [[{"node": "🤖 Email Decision Agent", "type": "main", "index": 0}]]},
+    "🤖 Email Decision Agent": {"main": [[{"node": "📝 Parse AI Response", "type": "main", "index": 0}]]},
+    "🧠 Gemini Model": {"ai_languageModel": [[{"node": "🤖 Email Decision Agent", "type": "ai_languageModel", "index": 0}]]},
+    "📝 Parse AI Response": {"main": [[{"node": "🔀 If Valid", "type": "main", "index": 0}]]},
+    "🔀 If Valid": {"main": [[{"node": "🔀 Should Send Email?", "type": "main", "index": 0}], [{"node": "📥 Get Unprocessed Dialogs", "type": "main", "index": 0}]]},
+    "🔀 Should Send Email?": {"main": [[{"node": "🔍 Check Duplicate", "type": "main", "index": 0}]]},
+    "🔍 Check Duplicate": {"main": [[{"node": "🔗 Merge Email Data", "type": "main", "index": 0}]]},
+    "🔗 Merge Email Data": {"main": [[{"node": "🔀 Is New Email?", "type": "main", "index": 0}]]},
+    "🔀 Is New Email?": {"main": [[{"node": "📎 Get Files from Drive", "type": "main", "index": 0}]]},
+    "📎 Get Files from Drive": {"main": [[{"node": "📤 Send Gmail", "type": "main", "index": 0}]]},
+    "📤 Send Gmail": {"main": [[{"node": "📝 Prepare Save Data", "type": "main", "index": 0}]]},
+    "📝 Prepare Save Data": {"main": [[{"node": "💾 Save Email Record", "type": "main", "index": 0}], [{"node": "📋 Prepare Follow-up Data", "type": "main", "index": 0}]]},
+    "💾 Save Email Record": {"main": [[{"node": "📊 Prepare Telegram Report", "type": "main", "index": 0}], [{"node": "🔐 Prepare SendPulse Auth", "type": "main", "index": 0}]]},
+    "📊 Prepare Telegram Report": {"main": [[{"node": "📱 Notify Manager", "type": "main", "index": 0}]]},
+    "📋 Prepare Follow-up Data": {"main": [[{"node": "📅 Schedule Follow-up", "type": "main", "index": 0}]]},
+    "🔐 Prepare SendPulse Auth": {"main": [[{"node": "🔑 Get SendPulse Token", "type": "main", "index": 0}]]},
+    "🔑 Get SendPulse Token": {"main": [[{"node": "📋 Prepare Contact Data", "type": "main", "index": 0}]]},
+    "📋 Prepare Contact Data": {"main": [[{"node": "🔍 Check if Customer", "type": "main", "index": 0}]]},
+    "🔍 Check if Customer": {"main": [[{"node": "🔀 Is Not Customer?", "type": "main", "index": 0}]]},
+    "🔀 Is Not Customer?": {"main": [[{"node": "📋 Prepare Contact Data2", "type": "main", "index": 0}], [{"node": "📝 Log Existing Customer", "type": "main", "index": 0}]]},
+    "📋 Prepare Contact Data2": {"main": [[{"node": "🔍 Check if Already Lead", "type": "main", "index": 0}]]},
+    "🔍 Check if Already Lead": {"main": [[{"node": "🔀 Already in Leads?", "type": "main", "index": 0}]]},
+    "🔀 Already in Leads?": {"main": [[{"node": "➕ Add to SendPulse", "type": "main", "index": 0}]]},
+    "➕ Add to SendPulse": {"main": [[{"node": "💾 Log SendPulse Sync", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "production-v1",
+  "meta": {"instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"},
+  "id": "email-automation-main-1-ru",
+  "tags": []
+}
