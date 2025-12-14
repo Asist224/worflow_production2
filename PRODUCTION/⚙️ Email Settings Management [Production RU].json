@@ -1,0 +1,720 @@
+{
+  "name": "⚙️ Email Settings Management [Production RU]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## ⚙️ Email Settings Management - Управление Настройками\n\n### Описание\nЭтот workflow управляет настройками email системы:\n- Автоанализ email-переписки\n- Очистка и архивирование старых записей\n- Расписание автоматических задач\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `api_key` — ваш API ключ для защиты endpoint\n   - `rate_limit_window_ms` — окно для rate limiting (мс)\n   - `rate_limit_max_requests` — максимум запросов в окне\n   - `batch_analysis_webhook` — URL для запуска batch анализа\n   - Названия таблиц PostgreSQL\n\n2. **Подключите PostgreSQL** credential к узлам БД\n\n3. **Настройте расписание** в узлах Schedule Trigger\n\n4. **Активируйте workflow**\n\n---\n\n### 📡 API Endpoints\n\n#### 1. Получить настройки автоанализа\n**GET** `/webhook/email-auto-analysis-settings`\n\n#### 2. Получить настройки очистки\n**GET** `/webhook/email-cleanup-settings`\n\n#### 3. Обновить настройки очистки\n**POST** `/webhook/update-email-cleanup-settings`\n\n**Headers для всех:**\n```\nx-api-key: ваш_api_key\n```\n\n---\n\n### ⏰ Автоматические задачи\n\n- **Batch Analysis** — каждый час\n- **Cleanup** — ежедневно в 3:00"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -550,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max_requests",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "batch-webhook",
+              "name": "batch_analysis_webhook",
+              "value": "https://your-n8n-domain.com/webhook/analyze-email-dialog",
+              "type": "string"
+            },
+            {
+              "id": "table-monitoring",
+              "name": "table_email_monitoring",
+              "value": "email_monitoring",
+              "type": "string"
+            },
+            {
+              "id": "table-archive",
+              "name": "table_email_monitoring_archive",
+              "value": "email_monitoring_archive",
+              "type": "string"
+            },
+            {
+              "id": "table-log",
+              "name": "table_email_processing_log",
+              "value": "email_processing_log",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-node",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -350,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "path": "email-auto-analysis-settings",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "7deab63f-17ed-43e5-8e66-131f18c115d2",
+      "name": "🌐 Webhook: Auto Settings",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        -80
+      ],
+      "webhookId": "email-auto-analysis-settings-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Auto Settings').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -80
+      ],
+      "id": "security-auto",
+      "name": "🔐 Security (Auto)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "auth-condition",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        176,
+        -80
+      ],
+      "id": "auth-auto",
+      "name": "🔀 Auth (Auto)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.error }}",
+        "options": {
+          "responseCode": "={{ $json.error.status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        16
+      ],
+      "id": "error-auto",
+      "name": "❌ Error (Auto)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем текущие настройки автоанализа для email\n// В реальной системе это должно храниться в БД\nconst settings = {\n  autoAnalysis: {\n    enabled: true,\n    frequency: 'hourly', // hourly, daily, weekly\n    triggerOn: {\n      newEmails: true,\n      unreadEmails: true,\n      highPriorityEmails: true,\n      afterMessages: 3 // Анализировать после N сообщений\n    },\n    filters: {\n      minLeadScore: 30,\n      languages: ['ru', 'en'],\n      excludeDomains: ['noreply', 'no-reply', 'donotreply']\n    },\n    schedule: {\n      startTime: '09:00',\n      endTime: '18:00',\n      workDays: [1, 2, 3, 4, 5] // Пн-Пт\n    }\n  },\n  contactExtraction: {\n    enabled: true,\n    autoExtract: true,\n    extractOn: {\n      newEmails: true,\n      afterAnalysis: true\n    }\n  },\n  notifications: {\n    enabled: true,\n    channels: {\n      telegram: true,\n      email: false,\n      webhook: false\n    },\n    notifyOn: {\n      highLeadScore: 80,\n      urgentEmails: true,\n      noReplyTimeout: 24 // часов\n    }\n  }\n};\n\nreturn [{json: settings}];"
+      },
+      "id": "ac3ca0dd-28bc-436b-ac4a-d982e1c5e277",
+      "name": "📋 Get Auto Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "49daa698-a05f-4d66-93be-3e09d48468d2",
+      "name": "📤 Send Auto Settings",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "path": "email-cleanup-settings",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "ccebfae3-6892-40ee-b1e7-748da6da788a",
+      "name": "🌐 Webhook: Cleanup Settings",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        200
+      ],
+      "webhookId": "email-cleanup-settings-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Cleanup Settings').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        200
+      ],
+      "id": "security-cleanup",
+      "name": "🔐 Security (Cleanup)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "auth-condition",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        176,
+        200
+      ],
+      "id": "auth-cleanup",
+      "name": "🔀 Auth (Cleanup)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.error }}",
+        "options": {
+          "responseCode": "={{ $json.error.status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        296
+      ],
+      "id": "error-cleanup",
+      "name": "❌ Error (Cleanup)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем настройки очистки для email\nconst cleanupSettings = {\n  cleanup: {\n    enabled: true,\n    schedule: 'daily', // daily, weekly, monthly\n    time: '03:00',\n    rules: [\n      {\n        id: 'old_emails',\n        name: 'Старые письма',\n        enabled: true,\n        condition: 'age',\n        value: 90, // дней\n        action: 'archive' // archive, delete\n      },\n      {\n        id: 'low_score',\n        name: 'Низкий Lead Score',\n        enabled: true,\n        condition: 'leadScore',\n        value: 20, // меньше этого значения\n        afterDays: 30,\n        action: 'archive'\n      },\n      {\n        id: 'resolved',\n        name: 'Завершенные диалоги',\n        enabled: true,\n        condition: 'status',\n        value: 'resolved',\n        afterDays: 60,\n        action: 'archive'\n      },\n      {\n        id: 'no_activity',\n        name: 'Без активности',\n        enabled: true,\n        condition: 'inactivity',\n        value: 45, // дней без активности\n        action: 'archive'\n      }\n    ],\n    archive: {\n      enabled: true,\n      location: 'archive_table',\n      keepAnalysis: true,\n      keepContacts: true\n    },\n    statistics: {\n      lastCleanup: '2025-09-10T03:00:00Z',\n      deletedCount: 0,\n      archivedCount: 127,\n      nextScheduled: '2025-09-11T03:00:00Z'\n    }\n  }\n};\n\nreturn [{json: cleanupSettings}];"
+      },
+      "id": "e723133c-f564-4167-bfea-bf3643f8b909",
+      "name": "📋 Get Cleanup Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        136
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "84f164a5-1d77-46d5-898c-c7ebec383a0d",
+      "name": "📤 Send Cleanup Settings",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        136
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "update-email-cleanup-settings",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "d7fa1f0c-9184-431c-8a9a-11deef04623d",
+      "name": "🌐 Webhook: Update Cleanup",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        480
+      ],
+      "webhookId": "update-email-cleanup-settings-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Update Cleanup').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        480
+      ],
+      "id": "security-update",
+      "name": "🔐 Security (Update)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "auth-condition",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        176,
+        480
+      ],
+      "id": "auth-update",
+      "name": "🔀 Auth (Update)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.error }}",
+        "options": {
+          "responseCode": "={{ $json.error.status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        576
+      ],
+      "id": "error-update",
+      "name": "❌ Error (Update)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем новые настройки из запроса\nconst newSettings = $('🌐 Webhook: Update Cleanup').item.json.body || $('🌐 Webhook: Update Cleanup').item.json;\n\n// Здесь должна быть логика сохранения в БД\n// Для примера просто возвращаем успех\n\nreturn [{\n  json: {\n    status: 'success',\n    message: 'Настройки очистки email обновлены',\n    settings: newSettings,\n    updatedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "b604d68c-f35d-433b-b4ca-299423c5f233",
+      "name": "📝 Update Cleanup Logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "ceda0e62-0569-4f65-ad4f-61447457d1d4",
+      "name": "📤 Send Update Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "70b5c588-e950-4758-86c9-47c958ab51a3",
+      "name": "⏰ Auto Analysis Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('⚙️ CONFIG').first().json.batch_analysis_webhook }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $('⚙️ CONFIG').first().json.api_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"batch\",\n  \"language\": \"all\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "a0bab675-ee0e-4a74-a48c-db646d07326b",
+      "name": "🚀 Trigger Batch Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        64,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 3
+            }
+          ]
+        }
+      },
+      "id": "4c9f3a44-9ca2-4a65-8006-5a51f74ce02d",
+      "name": "⏰ Cleanup Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Архивирование старых email записей\nBEGIN;\n\n-- Архивируем старые записи из email_monitoring\nINSERT INTO {{ $('⚙️ CONFIG').first().json.table_email_monitoring_archive }} \nSELECT * FROM {{ $('⚙️ CONFIG').first().json.table_email_monitoring }} \nWHERE \n  (last_activity_time < NOW() - INTERVAL '90 days')\n  OR (lead_score < 20 AND last_activity_time < NOW() - INTERVAL '30 days')\n  OR (status = 'resolved' AND last_activity_time < NOW() - INTERVAL '60 days');\n\n-- Удаляем архивированные записи\nDELETE FROM {{ $('⚙️ CONFIG').first().json.table_email_monitoring }} \nWHERE \n  (last_activity_time < NOW() - INTERVAL '90 days')\n  OR (lead_score < 20 AND last_activity_time < NOW() - INTERVAL '30 days')\n  OR (status = 'resolved' AND last_activity_time < NOW() - INTERVAL '60 days');\n\n-- Очищаем старые логи\nDELETE FROM {{ $('⚙️ CONFIG').first().json.table_email_processing_log }} \nWHERE processed_at < NOW() - INTERVAL '30 days';\n\nCOMMIT;\n\nSELECT \n  'cleanup_completed' as status,\n  COUNT(*) as archived_count\nFROM {{ $('⚙️ CONFIG').first().json.table_email_monitoring_archive }}\nWHERE created_at >= NOW() - INTERVAL '1 minute';",
+        "options": {}
+      },
+      "id": "8612c9fa-5c5f-4e14-bf10-829ca3eb4154",
+      "name": "🧹 Execute Cleanup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        64,
+        912
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⚙️ CONFIG": {
+      "main": [
+        [
+          {
+            "node": "🌐 Webhook: Auto Settings",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🌐 Webhook: Cleanup Settings",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🌐 Webhook: Update Cleanup",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⏰ Auto Analysis Schedule",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "⏰ Cleanup Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook: Auto Settings": {
+      "main": [
+        [
+          {
+            "node": "🔐 Security (Auto)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Security (Auto)": {
+      "main": [
+        [
+          {
+            "node": "🔀 Auth (Auto)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Auth (Auto)": {
+      "main": [
+        [
+          {
+            "node": "📋 Get Auto Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Error (Auto)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Get Auto Settings": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Auto Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook: Cleanup Settings": {
+      "main": [
+        [
+          {
+            "node": "🔐 Security (Cleanup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Security (Cleanup)": {
+      "main": [
+        [
+          {
+            "node": "🔀 Auth (Cleanup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Auth (Cleanup)": {
+      "main": [
+        [
+          {
+            "node": "📋 Get Cleanup Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Error (Cleanup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Get Cleanup Settings": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Cleanup Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook: Update Cleanup": {
+      "main": [
+        [
+          {
+            "node": "🔐 Security (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Security (Update)": {
+      "main": [
+        [
+          {
+            "node": "🔀 Auth (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Auth (Update)": {
+      "main": [
+        [
+          {
+            "node": "📝 Update Cleanup Logic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Error (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Update Cleanup Logic": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Update Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏰ Auto Analysis Schedule": {
+      "main": [
+        [
+          {
+            "node": "🚀 Trigger Batch Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏰ Cleanup Schedule": {
+      "main": [
+        [
+          {
+            "node": "🧹 Execute Cleanup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "04c9638b-95b5-4ea3-9f92-ebc85f50106c",
+  "meta": {
+    "instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"
+  },
+  "id": "JpyVU7czxPSYH4VL",
+  "tags": []
+}
