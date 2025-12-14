@@ -1,0 +1,464 @@
+{
+  "name": "📧Email Automation Main_3",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "id": "29601cb8-73b4-4d29-b334-bdbf8563adc4",
+      "name": "Check Twice Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -19152,
+        -3376
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Получаем follow-ups которые нужно обработать сегодня\nWITH pending_followups AS (\n    SELECT \n        f.*,\n        gc.messages,\n        gc.lead_score,\n        gc.language,\n        gc.subject,\n        gc.message_count,\n        -- Исправленная логика определения типа\n        CASE \n            WHEN gc.message_count IS NULL OR gc.message_count = 0 THEN 'no_response'\n            WHEN gc.lead_score >= 70 THEN 'high_interest'\n            WHEN gc.message_count >= 2 THEN 'active_discussion'  -- Изменено с 3 на 2\n            WHEN gc.lead_score >= 50 THEN 'standard'\n            ELSE 'low_interest'\n        END as followup_type\n    FROM email_follow_ups f\n    LEFT JOIN gmail_conversations gc ON f.thread_id = gc.thread_id\n    WHERE f.status = 'pending'\n      AND f.follow_up_date <= NOW()\n      AND f.follow_up_date > NOW() - INTERVAL '24 hours'\n)\nSELECT * FROM pending_followups\nORDER BY follow_up_date ASC\nLIMIT 20;",
+        "options": {}
+      },
+      "id": "e105af0c-f22d-41b0-bb17-5a84c7d985d6",
+      "name": "Get Pending Follow-ups",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -18976,
+        -3376
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_score }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "id": "9199afa8-e9b6-41a9-9867-ec632dbd6765"
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "7ff995f1-4dd1-47a4-9132-f3ae667afac6",
+      "name": "Check Follow-up Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -18784,
+        -3376
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Email: {{ $json.email }}\nЯзык: {{ $json.language }}\nLead Score: {{ $json.lead_score }}\nТип follow-up: {{ $json.followup_type }}\nПоследняя тема: {{ $json.subject }}\nИстория: {{ $json.messages }}",
+        "options": {
+          "systemMessage": "Ты - менеджер по продажам Cryptomator. Твоя задача - создать эффективное follow-up письмо.\n\n# ТИПЫ FOLLOW-UP:\n\n## no_response (клиент не ответил на первое письмо)\nНе пиши! Возвращай shouldSend: false. Одного письма достаточно.\n\n## high_interest (lead_score >= 70)\nОтправь письмо с:\n- Персональным предложением\n- Ограниченной по времени скидкой 15%\n- Ссылкой на календарь для звонка\n\n## active_discussion (активная переписка)\nОтправь письмо с:\n- Ответами на возможные сомнения\n- Кейсами успешных клиентов\n- Специальным предложением\n\n## standard\nОценивай по контексту. Если не уверен - не отправляй.\n\n# ПРАВИЛА:\n1. НЕ отправляй follow-up если:\n   - Клиент не ответил на первое письмо (no_response)\n   - Lead score < 30\n   - Прошло больше 7 дней с последнего контакта\n   \n2. ОБЯЗАТЕЛЬНО отправляй если:\n   - Lead score >= 70\n   - Была активная переписка (3+ сообщения)\n\n# ШАБЛОН ПИСЬМА:\n\n```html\n<!DOCTYPE html>\n<html>\n<body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333;\">\n    <div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\">\n        <p>{приветствие с именем если известно}</p>\n        \n        <p>{персонализированное вступление основанное на предыдущей переписке}</p>\n        \n        <div style=\"background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0;\">\n            {основное сообщение - ответ на сомнения или специальное предложение}\n        </div>\n        \n        <div style=\"background: #fef5e7; border-left: 4px solid #f39c12; padding: 15px; margin: 20px 0;\">\n            <strong>💎 Эксклюзивное предложение</strong><br>\n            {спецпредложение с дедлайном}\n        </div>\n        \n        <div style=\"text-align: center; margin: 25px 0;\">\n            <a href=\"https://cryptomator.pro/?utm_source=email&utm_campaign=followup&lang={язык}#prices\" \n               style=\"background-color: #3182ce; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;\">\n                {призыв к действию}\n            </a>\n        </div>\n        \n        <p>С уважением,<br>\n        <strong>Команда Cryptomator</strong></p>\n    </div>\n</body>\n</html>\n```\n\n# JSON ОТВЕТ (ОБЯЗАТЕЛЬНО на языке из поля language):\n```json\n{\n  \"shouldSend\": true/false,\n  \"reason\": \"Если language='ru' - причина на русском языке. Если language='en' - reason in English\",\n  \"emailContent\": \"HTML письма на языке клиента (ru/en)\",\n  \"subject\": \"Если language='ru' - тема на русском. Если language='en' - subject in English\",\n  \"discount\": \"размер скидки если есть / discount amount if any\",\n  \"urgency\": \"high/medium/low\"\n}\n```\n\nВАЖНО:\n\nЕсли в данных указано language='ru' - ВСЕ поля (reason, emailContent, subject) должны быть на РУССКОМ языке\nЕсли в данных указано language='en' - ВСЕ поля должны быть на АНГЛИЙСКОМ языке\nПоле reason ВСЕГДА должно объяснять решение на языке клиента\n\nПримеры:\nДля language='ru':\n{\n  \"shouldSend\": true,\n  \"reason\": \"Lead score 70, высокий интерес. Клиент задавал вопросы о тарифах, отправляю персональное предложение со скидкой 15%\",\n  \"emailContent\": \"<html>...</html>\",\n  \"subject\": \"Специальное предложение для вас - скидка 15%\",\n  \"discount\": \"15%\",\n  \"urgency\": \"high\"\n}\n\nДля language='en':\n\n{\n  \"shouldSend\": true,\n  \"reason\": \"Lead score 70, high interest type. Client has shown significant interest after presentation. Sending personalized offer with discount\",\n  \"emailContent\": \"<html>...</html>\",\n  \"subject\": \"Special offer for you - 15% discount\",\n  \"discount\": \"15%\",\n  \"urgency\": \"high\"\n}"
+        }
+      },
+      "id": "3548af8a-f370-4c1a-a4fa-a892c1fe8f83",
+      "name": "Generate Follow-up",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        -18512,
+        -3600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Парсим ответ AI\nconst aiResponse = $input.first().json;\nconst originalData = $items(\"Check Follow-up Type\")[0].json;\n\nlet decision;\ntry {\n    if (typeof aiResponse.output === 'string') {\n        const cleanJson = aiResponse.output\n            .replace(/```json\\n?/g, '')\n            .replace(/```\\n?/g, '')\n            .trim();\n        decision = JSON.parse(cleanJson);\n    } else {\n        decision = aiResponse.output;\n    }\n} catch (error) {\n    // Если ошибка парсинга - не отправляем\n    decision = {\n        shouldSend: false,\n        reason: 'Ошибка генерации письма'\n    };\n}\n\n// Добавляем данные из оригинального запроса\nreturn [{\n    json: {\n        ...originalData,\n        ...decision,\n        followup_id: originalData.id\n    }\n}];"
+      },
+      "id": "3d774d20-0fc5-4b12-a7d6-d6a8f825bf46",
+      "name": "Parse Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -18176,
+        -3584
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.shouldSend }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "id": "81343c75-40af-4fbe-8071-b3b55779e19b"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c397ba2d-77d4-42e1-8440-9e8e61d30c41",
+      "name": "Should Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -17952,
+        -3520
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.emailContent }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Cryptomator Team",
+          "replyTo": "support@cryptomator.pro"
+        }
+      },
+      "id": "c83a000d-b03a-4bc9-9a8c-ef2c4d17200f",
+      "name": "Send Follow-up Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -17744,
+        -3536
+      ],
+      "webhookId": "e2bf2b84-361a-4aa3-be4a-995f48c02372",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ev0cwU3ZEXqPZ9wU",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Обновляем статус follow-up\nUPDATE email_follow_ups\nSET \n    status = 'sent',\n    sent_at = NOW(),\n    notes = CONCAT(notes, ' | Sent: ', NOW()::text)\nWHERE id = {{ $json.followup_id }};\n\n-- Обновляем gmail_conversations\nUPDATE gmail_conversations\nSET \n    message_count = message_count + 1\nWHERE thread_id = '{{ $json.thread_id }}';\n\nSELECT 'Follow-up sent' as status;",
+        "options": {}
+      },
+      "id": "5ccdfb27-646b-4bb4-a94c-a5c3995c190c",
+      "name": "Update Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -17360,
+        -3536
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Помечаем как пропущенный\nUPDATE email_follow_ups\nSET \n    status = 'skipped',\n    notes = CONCAT(notes, ' | Skipped: ', '{{ $json.reason.replace(/'/g, \"''\") }}')\nWHERE id = {{ $json.followup_id }};\n\nSELECT 'Skipped' as status;",
+        "options": {}
+      },
+      "id": "0a5c6f86-eede-4416-8810-835cfdb1412a",
+      "name": "Mark as Skipped",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -17440,
+        -3280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "e9d3e9a6-99ba-49ef-80a3-06b55fe81d4f",
+      "name": "Gemini Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -18560,
+        -3440
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "abo0BDHSJPM0pgRU",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "-1002588885971",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e2392f6b-9122-4801-813f-73b695ddcb67",
+      "name": "Notify Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -16880,
+        -3360
+      ],
+      "webhookId": "984ce731-decd-4600-a4e1-6841c6db60c9",
+      "credentials": {
+        "telegramApi": {
+          "id": "bHlhE9zUMfwWqM9t",
+          "name": "Manager Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем данные из предыдущих узлов\nconst parseDecision = $items(\"Parse Decision\")[0].json;\nconst pendingData = $items(\"Get Pending Follow-ups\")[0].json;\n\n// Подготавливаем данные для Update Status\nreturn [{\n  json: {\n    followup_id: pendingData.id,\n    email: pendingData.email,\n    thread_id: pendingData.thread_id,\n    lead_score: pendingData.lead_score,\n    emailContent: parseDecision.emailContent ? \n                  parseDecision.emailContent.substring(0, 500) : \n                  'Follow-up sent'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -17536,
+        -3536
+      ],
+      "id": "dc1f568d-d9e0-4186-864a-47fd71467a17",
+      "name": "Prepare Update Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем данные для пропущенных follow-ups\nconst parseDecision = $items(\"Parse Decision\")[0].json;\nconst pendingData = $items(\"Get Pending Follow-ups\")[0].json;\n\n// Подготавливаем данные для Mark as Skipped\nreturn [{\n  json: {\n    followup_id: pendingData.id,\n    reason: parseDecision.reason || 'Низкий lead score или no_response'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -17792,
+        -3392
+      ],
+      "id": "1c866ea1-e565-40ff-b389-eda677a4bd8f",
+      "name": "Prepare Skip Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем данные из предыдущего узла\nconst sqlResult = $input.first().json;\nconst pendingData = $items(\"Get Pending Follow-ups\")[0]?.json || {};\nconst parseDecision = $items(\"Parse Decision\")[0]?.json || {};\n\n// Определяем статус\nlet status = 'Неизвестно';\nif (sqlResult?.status === 'Follow-up sent') {\n  status = 'Отправлено';\n} else if (sqlResult?.status === 'Skipped') {\n  status = 'Пропущено';\n}\n\n// Получаем данные\nconst email = pendingData.email || 'Не указан';\nconst leadScore = pendingData.lead_score || 0;\n\n// Очищаем reason от специальных символов для Telegram\nlet reason = parseDecision.reason || 'Автоматическая обработка';\n// Удаляем проблемные символы\nreason = reason\n  .replace(/'/g, '')\n  .replace(/\"/g, '')\n  .replace(/`/g, '')\n  .replace(/\\n/g, ' ')\n  .substring(0, 200); // Ограничиваем длину\n\n// Формируем сообщение без спецсимволов\nconst icon = status === 'Отправлено' ? '✅' : '⏭️';\nconst message = `📊 Follow-up Report\n\n${icon} Статус: ${status}\n📧 Email: ${email}\n💯 Lead Score: ${leadScore}\n📝 Причина: ${reason}`;\n\nreturn [{\n  json: {\n    message: message\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -17056,
+        -3360
+      ],
+      "id": "a1649f81-b901-44a2-9e5f-c157fbd04f49",
+      "name": "Prepare Telegram Data"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check Twice Daily": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Follow-ups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Follow-ups": {
+      "main": [
+        [
+          {
+            "node": "Check Follow-up Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Follow-up Type": {
+      "main": [
+        [
+          {
+            "node": "Generate Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Parse Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Decision": {
+      "main": [
+        [
+          {
+            "node": "Should Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send?": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Skip Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up Email": {
+      "main": [
+        [
+          {
+            "node": "Prepare Update Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status": {
+      "main": [
+        [
+          {
+            "node": "Prepare Telegram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Skipped": {
+      "main": [
+        [
+          {
+            "node": "Prepare Telegram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Follow-up",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Update Data": {
+      "main": [
+        [
+          {
+            "node": "Update Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Skip Data": {
+      "main": [
+        [
+          {
+            "node": "Mark as Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Telegram Data": {
+      "main": [
+        [
+          {
+            "node": "Notify Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ffc4d05f-5e64-4a3b-bb95-b8b061a43835",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"
+  },
+  "id": "kwbiltkxVdA5HWbR",
+  "tags": []
+}
