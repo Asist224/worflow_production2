@@ -1,0 +1,747 @@
+{
+  "name": "📧 Email Analysis [Production RU]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📧 Email Analysis - Анализ Email Диалогов\n\n### Описание\nЭтот workflow анализирует email-переписку с клиентами с помощью AI.\nОпределяет эмоциональный тон, потребности клиента, упущенные возможности\nи предоставляет рекомендации. Включает Lead Scoring.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `api_key` — ваш API ключ для защиты endpoint\n   - `rate_limit_window_ms` — окно для rate limiting (мс)\n   - `rate_limit_max_requests` — максимум запросов в окне\n   - Названия таблиц PostgreSQL\n\n2. **Подключите PostgreSQL** credential к узлам БД\n\n3. **Подключите Google Gemini API** credential\n\n4. **Активируйте workflow**\n\n---\n\n### 📡 API Endpoint\n\n**POST** `/webhook/analyze-email-dialog`\n\n**Headers:**\n```\nContent-Type: application/json\nx-api-key: ваш_api_key\n```\n\n**Body:**\n```json\n{\n  \"type\": \"single\",\n  \"email\": \"client@example.com\",\n  \"threadId\": \"thread_123\",\n  \"language\": \"ru\",\n  \"userName\": \"Иван Иванов\"\n}\n```\n\n**Параметры:**\n- `type` — тип анализа: `single` (один email) или `all` (все диалоги)\n- `email` — email клиента для анализа\n- `language` — язык фильтрации диалогов\n\n---\n\n### 📊 Результат анализа\n\n```json\n{\n  \"emotionalTone\": {\n    \"overall\": \"positive/negative/neutral\",\n    \"satisfaction\": 85\n  },\n  \"customerNeeds\": [\"...\"],\n  \"missedOpportunities\": [\"...\"],\n  \"recommendations\": [\"...\"],\n  \"leadScoring\": {\n    \"score\": 75,\n    \"temperature\": \"warm\"\n  }\n}\n```"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max_requests",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "table-language-settings",
+              "name": "table_analysis_language_settings",
+              "value": "analysis_language_settings",
+              "type": "string"
+            },
+            {
+              "id": "table-dialog-analysis",
+              "name": "table_email_dialog_analysis",
+              "value": "email_dialog_analysis",
+              "type": "string"
+            },
+            {
+              "id": "table-conversations",
+              "name": "table_gmail_conversations",
+              "value": "gmail_conversations",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-node",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2080,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-email-dialog",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "01d39500-672d-41c3-a8e2-221b55d1ffd1",
+      "name": "🌐 Webhook: Analyze Email",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1888,
+        304
+      ],
+      "webhookId": "analyze-email-dialog-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Analyze Email').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1728,
+        304
+      ],
+      "id": "4be98bc3-982f-4bd3-914e-3ecd5c00c338",
+      "name": "🔐 Security Check"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "auth-condition",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1552,
+        304
+      ],
+      "id": "2123dfe0-4144-4331-879e-3f1ca7bf0ab4",
+      "name": "🔀 Auth Check"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.error }}",
+        "options": {
+          "responseCode": "={{ $json.error.status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        464
+      ],
+      "id": "25607d76-07a2-4e06-b6fd-33daf46cf796",
+      "name": "❌ Error Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Извлекаем данные из запроса\nconst data = $('🌐 Webhook: Analyze Email').item.json.body || $('🌐 Webhook: Analyze Email').item.json;\n\nconst analysisType = data.type || 'single';\nconst email = data.email;\nconst threadId = data.threadId;\nconst language = data.language;\n\nreturn [{\n    json: {\n        type: analysisType,\n        email: email,\n        threadId: threadId,\n        language: language,\n        userName: data.userName\n    }\n}];"
+      },
+      "id": "edfd5978-d604-4a74-a0ab-70dd7ea5883c",
+      "name": "📥 Process Analysis Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1344,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Получаем язык анализа из настроек\nSELECT language_code \nFROM {{ $('⚙️ CONFIG').first().json.table_analysis_language_settings }} \nORDER BY id DESC \nLIMIT 1;",
+        "options": {}
+      },
+      "id": "f9c099c4-6342-465f-a65f-01b77685f46c",
+      "name": "📋 Get Analysis Language",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1168,
+        288
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем данные из предыдущих узлов\nconst requestData = $('📥 Process Analysis Request').first().json;\nconst langSetting = items[0]?.json?.language_code || 'ru';\n\n// Передаем дальше с языком анализа\nreturn [{\n    json: {\n        type: requestData.type,\n        email: requestData.email,\n        threadId: requestData.threadId,\n        language: requestData.language,\n        userName: requestData.userName,\n        analysisLanguage: langSetting\n    }\n}];"
+      },
+      "id": "fd3f462c-a5c0-4339-9b2e-3d3d0a149bfe",
+      "name": "🔄 Merge with Language",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Проверяем есть ли новые email сообщения и получаем предыдущий анализ\nWITH last_analysis AS (\n    SELECT \n        email,\n        updated_at as analysis_date,\n        emotional_tone,\n        customer_needs,\n        missed_opportunities,\n        recommendations,\n        lead_scoring,\n        statistics,\n        satisfaction_percentage\n    FROM {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }}\n    WHERE email = '{{ $('🔄 Merge with Language').first().json.email }}'\n    ORDER BY updated_at DESC\n    LIMIT 1\n),\nconversation_data AS (\n    SELECT \n        email,\n        updated_at as conversation_updated,\n        message_count\n    FROM {{ $('⚙️ CONFIG').first().json.table_gmail_conversations }}\n    WHERE email = '{{ $('🔄 Merge with Language').first().json.email }}'\n    ORDER BY updated_at DESC\n    LIMIT 1\n)\nSELECT \n    COALESCE(cd.email, '{{ $('🔄 Merge with Language').first().json.email }}') as email,\n    cd.conversation_updated,\n    cd.message_count,\n    la.analysis_date as last_analysis_date,\n    CASE \n        WHEN cd.conversation_updated IS NULL THEN false\n        WHEN la.analysis_date IS NULL THEN true\n        WHEN cd.conversation_updated > la.analysis_date THEN true \n        ELSE false \n    END as has_new_messages,\n    la.emotional_tone as prev_emotional_tone,\n    la.customer_needs as prev_customer_needs,\n    la.missed_opportunities as prev_missed_opportunities,\n    la.recommendations as prev_recommendations,\n    la.lead_scoring as prev_lead_scoring,\n    la.statistics as prev_statistics,\n    la.satisfaction_percentage as prev_satisfaction\nFROM conversation_data cd\nFULL OUTER JOIN last_analysis la ON true;",
+        "options": {}
+      },
+      "id": "ea5d5b04-d3cb-4f6a-bc2c-8f51be47b982",
+      "name": "🔍 Check New Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -832,
+        288
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Мержим данные из Check for New Email Messages с данными из Merge with Language\nconst checkResult = items[0].json;\nconst mergedData = $('🔄 Merge with Language').first().json;\n\n// Парсим JSONB поля предыдущего анализа\nconst parseJsonField = (field) => {\n    if (!field) return null;\n    if (typeof field === 'string') {\n        try {\n            return JSON.parse(field);\n        } catch (e) {\n            return field;\n        }\n    }\n    return field;\n};\n\n// Формируем объект предыдущего анализа\nconst previousAnalysis = checkResult.last_analysis_date ? {\n    emotionalTone: parseJsonField(checkResult.prev_emotional_tone),\n    customerNeeds: parseJsonField(checkResult.prev_customer_needs),\n    missedOpportunities: parseJsonField(checkResult.prev_missed_opportunities),\n    recommendations: parseJsonField(checkResult.prev_recommendations),\n    leadScoring: parseJsonField(checkResult.prev_lead_scoring),\n    statistics: parseJsonField(checkResult.prev_statistics),\n    satisfaction: checkResult.prev_satisfaction,\n    analysisDate: checkResult.last_analysis_date\n} : null;\n\nreturn [{\n    json: {\n        // Данные из Merge with Language\n        type: mergedData.type,\n        email: mergedData.email,\n        threadId: mergedData.threadId,\n        language: mergedData.language,\n        userName: mergedData.userName,\n        analysisLanguage: mergedData.analysisLanguage,\n        \n        // Данные из Check for New Email Messages\n        has_new_messages: checkResult.has_new_messages,\n        conversation_updated: checkResult.conversation_updated,\n        last_analysis_date: checkResult.last_analysis_date,\n        message_count: checkResult.message_count,\n        \n        // Предыдущий анализ для передачи в AI\n        previousAnalysis: previousAnalysis\n    }\n}];"
+      },
+      "id": "b3a1265f-5420-4d97-9cf5-5331da40bf6a",
+      "name": "🔀 Merge Check Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-new-email-messages",
+              "leftValue": "={{ $json.has_new_messages }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ca5a0d73-2f35-480e-af52-bf23a60b5dc6",
+      "name": "🔀 Has New Messages?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Получаем существующий анализ email\nSELECT \n    email,\n    analysis_type,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    lead_scoring,\n    statistics,\n    satisfaction_percentage,\n    created_at,\n    updated_at\nFROM {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }}\nWHERE email = '{{ $('🔀 Merge Check Data').first().json.email }}'\nORDER BY updated_at DESC\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "3be2e34c-477e-4369-bada-82dcad647219",
+      "name": "📋 Get Existing Analysis",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -208,
+        512
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Форматируем существующий анализ email для возврата\nconst existingAnalysis = items[0].json;\nconst checkData = $('🔀 Merge Check Data').first().json;\n\n// Парсим JSONB поля если они строки\nconst parseJsonField = (field) => {\n    if (!field) return null;\n    if (typeof field === 'string') {\n        try {\n            return JSON.parse(field);\n        } catch (e) {\n            return field;\n        }\n    }\n    return field;\n};\n\nreturn [{\n    json: {\n        // Основные поля анализа\n        emotionalTone: parseJsonField(existingAnalysis.emotional_tone),\n        customerNeeds: parseJsonField(existingAnalysis.customer_needs),\n        missedOpportunities: parseJsonField(existingAnalysis.missed_opportunities),\n        recommendations: parseJsonField(existingAnalysis.recommendations),\n        leadScoring: parseJsonField(existingAnalysis.lead_scoring),\n        statistics: parseJsonField(existingAnalysis.statistics),\n        \n        // Email идентификатор\n        email: existingAnalysis.email || checkData.email,\n        \n        // Метаданные кеширования\n        _cached: true,\n        _lastAnalysisDate: checkData.last_analysis_date,\n        _conversationUpdated: checkData.conversation_updated,\n        _messageCount: checkData.message_count\n    }\n}];"
+      },
+      "id": "e3816139-e0d0-4bc4-ac17-23022dcbb0fb",
+      "name": "📝 Format Existing Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "2c8b3358-1943-43bd-abfc-4be44472ce4a",
+      "name": "📤 Return Cached Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "single",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "single-analysis-check"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "75c2e9fd-dcb0-44e3-9829-4bad1a97239a",
+      "name": "🔀 Analysis Type?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Получаем email диалог для анализа (только новые сообщения если есть предыдущий анализ)\nSELECT \n    gc.email,\n    gc.thread_id,\n    gc.subject,\n    gc.messages,\n    gc.status,\n    gc.lead_score,\n    gc.language,\n    gc.message_count,\n    gc.created_at,\n    gc.updated_at,\n    '{{ $('🔀 Merge Check Data').first().json.last_analysis_date }}' as last_analysis_date\nFROM {{ $('⚙️ CONFIG').first().json.table_gmail_conversations }} gc\nWHERE gc.email = '{{ $('🔀 Merge Check Data').first().json.email }}'\nORDER BY gc.updated_at DESC\nLIMIT 1;",
+        "options": {}
+      },
+      "id": "6d81e7db-4c56-474a-9927-373aa6a23d53",
+      "name": "📧 Get Single Dialog",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Получаем все email диалоги для анализа\nSELECT \n    gc.email,\n    gc.thread_id,\n    gc.subject,\n    gc.messages,\n    gc.status,\n    gc.lead_score,\n    gc.language,\n    gc.message_count,\n    gc.created_at,\n    gc.updated_at,\n    '{{ $('🔀 Merge Check Data').first().json.last_analysis_date }}' as last_analysis_date\nFROM {{ $('⚙️ CONFIG').first().json.table_gmail_conversations }} gc\nWHERE \n    gc.created_at >= NOW() - INTERVAL '30 days'\n    {{ $('🔀 Merge Check Data').first().json.language ? \"AND gc.language = '\" + $('🔀 Merge Check Data').first().json.language + \"'\" : \"\" }}\nORDER BY gc.updated_at DESC;",
+        "options": {}
+      },
+      "id": "4e033833-ef48-4c6f-a0d0-ec6fb19e7c2e",
+      "name": "📧 Get All Dialogs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        192
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Форматируем email диалоги для анализа\nconst dialogs = items;\nconst mergedData = $('🔀 Merge Check Data').first().json;\nconst analysisType = mergedData.type;\nconst analysisLanguage = mergedData.analysisLanguage || 'ru';\nconst lastAnalysisDate = mergedData.last_analysis_date;\nconst previousAnalysis = mergedData.previousAnalysis;\n\n// Группируем по email\nconst emailDialogs = {};\n\ndialogs.forEach(item => {\n    const data = item.json;\n    const email = data.email;\n    \n    if (!emailDialogs[email]) {\n        // Парсим messages\n        let messages = [];\n        try {\n            messages = typeof data.messages === 'string' \n                ? JSON.parse(data.messages) \n                : data.messages || [];\n        } catch (e) {\n            messages = [];\n        }\n        \n        // Если есть предыдущий анализ - фильтруем только НОВЫЕ сообщения\n        let filteredMessages = messages;\n        let allMessages = messages;\n        \n        if (lastAnalysisDate && lastAnalysisDate !== 'null' && lastAnalysisDate !== '') {\n            const lastAnalysisTime = new Date(lastAnalysisDate).getTime();\n            filteredMessages = messages.filter(msg => {\n                const msgTime = new Date(msg.date).getTime();\n                return msgTime > lastAnalysisTime;\n            });\n        }\n        \n        emailDialogs[email] = {\n            email: email,\n            threadId: data.thread_id,\n            subject: data.subject,\n            language: data.language,\n            messageCount: data.message_count || messages.length,\n            newMessageCount: filteredMessages.length,\n            leadScore: data.lead_score,\n            messages: filteredMessages,\n            allMessages: allMessages\n        };\n    }\n});\n\n// Подготавливаем данные для AI с учетом языка\nconst dialogsForAnalysis = Object.values(emailDialogs).map((dialog) => {\n    // Выбираем правильные метки в зависимости от языка анализа\n    const clientLabel = analysisLanguage === 'en' ? 'Client' : \n                        analysisLanguage === 'es' ? 'Cliente' : \n                        analysisLanguage === 'fr' ? 'Client' : \n                        analysisLanguage === 'de' ? 'Kunde' : \n                        analysisLanguage === 'it' ? 'Cliente' : \n                        analysisLanguage === 'pt' ? 'Cliente' : \n                        analysisLanguage === 'zh' ? '客户' : \n                        analysisLanguage === 'ja' ? '顧客' : \n                        analysisLanguage === 'ko' ? '고객' : \n                        analysisLanguage === 'ua' ? 'Клієнт' : \n                        'Клиент';\n    \n    const botLabel = analysisLanguage === 'en' ? 'Bot' : \n                     analysisLanguage === 'es' ? 'Bot' : \n                     analysisLanguage === 'fr' ? 'Bot' : \n                     analysisLanguage === 'de' ? 'Bot' : \n                     analysisLanguage === 'it' ? 'Bot' : \n                     analysisLanguage === 'pt' ? 'Bot' : \n                     analysisLanguage === 'zh' ? '机器人' : \n                     analysisLanguage === 'ja' ? 'ボット' : \n                     analysisLanguage === 'ko' ? '봇' : \n                     analysisLanguage === 'ua' ? 'Бот' : \n                     'Бот';\n    \n    const conversation = dialog.messages.map(msg => \n        `${msg.type === 'incoming' ? clientLabel : botLabel}: ${msg.content}`\n    ).join('\\n');\n    \n    return {\n        email: dialog.email,\n        threadId: dialog.threadId,\n        subject: dialog.subject,\n        language: dialog.language,\n        conversation: conversation,\n        newMessageCount: dialog.newMessageCount,\n        totalMessageCount: dialog.allMessages.length\n    };\n});\n\n// Определяем, это первый анализ или обновление\nconst isUpdate = !!previousAnalysis;\n\nreturn [{\n    json: {\n        type: analysisType,\n        email: mergedData.email,\n        dialogs: dialogsForAnalysis,\n        totalDialogs: dialogsForAnalysis.length,\n        analysisLanguage: analysisLanguage,\n        isUpdate: isUpdate,\n        previousAnalysis: previousAnalysis\n    }\n}];"
+      },
+      "id": "40708d1b-9fc9-4a5f-9698-f7681dcc80d1",
+      "name": "📝 Format Dialogs for AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Язык вывода результатов: {{ $json.analysisLanguage || 'ru' }}\nОБЯЗАТЕЛЬНО: Генерируйте ВСЕ текстовые поля ответа на языке: {{ \n  $json.analysisLanguage === 'ru' ? 'Русский' : \n  $json.analysisLanguage === 'en' ? 'English' : \n  $json.analysisLanguage === 'es' ? 'Español' : \n  $json.analysisLanguage === 'fr' ? 'Français' : \n  $json.analysisLanguage === 'de' ? 'Deutsch' : \n  $json.analysisLanguage === 'it' ? 'Italiano' : \n  $json.analysisLanguage === 'pt' ? 'Português' : \n  $json.analysisLanguage === 'zh' ? '中文' : \n  $json.analysisLanguage === 'ja' ? '日本語' : \n  $json.analysisLanguage === 'ko' ? '한국어' : \n  $json.analysisLanguage === 'ua' ? 'Українська' : \n  'Русский' \n}}\n\nТип анализа: {{ $json.type }}\nРежим: {{ $json.isUpdate ? 'ОБНОВЛЕНИЕ существующего анализа' : 'ПЕРВИЧНЫЙ анализ' }}\n\n{{ $json.isUpdate && $json.previousAnalysis ? `\n========================================\nПРЕДЫДУЩИЙ АНАЛИЗ (используй как базу для обновления):\n========================================\n\nЭмоциональный тон: ${JSON.stringify($json.previousAnalysis.emotionalTone, null, 2)}\n\nПотребности клиента: ${JSON.stringify($json.previousAnalysis.customerNeeds, null, 2)}\n\nУпущенные возможности: ${JSON.stringify($json.previousAnalysis.missedOpportunities, null, 2)}\n\nРекомендации: ${JSON.stringify($json.previousAnalysis.recommendations, null, 2)}\n\nLead Scoring: ${JSON.stringify($json.previousAnalysis.leadScoring, null, 2)}\n\nСтатистика: ${JSON.stringify($json.previousAnalysis.statistics, null, 2)}\n\n========================================\nНОВЫЕ СООБЩЕНИЯ ДЛЯ АНАЛИЗА:\n========================================\n` : '========================================\\nДИАЛОГИ ДЛЯ ПЕРВИЧНОГО АНАЛИЗА:\\n========================================\\n' }}\n\n{{ $json.dialogs.map((d, i) => `\n--- Email диалог ${i+1} (${d.email}, ${d.language}) ---\nТема: ${d.subject}\n${ $json.isUpdate ? `Новых сообщений: ${d.newMessageCount} из ${d.totalMessageCount} общих` : `Всего сообщений: ${d.totalMessageCount}` }\n\n${d.conversation}`).join('\\n\\n') }}",
+        "options": {
+          "systemMessage": "=#Роль: Вы — специалист по анализу email-переписки между клиентами и компанией Cryptomator.\n\n---\n\n# 🔴 КРИТИЧЕСКИ ВАЖНО - ЯЗЫК ВЫВОДА\n\n**ВСЕ текстовые поля результата анализа ДОЛЖНЫ быть на языке, указанном в \"Язык вывода результатов\"!**\n\nЭто включает:\n- Все описания в emotionalTone (overall, overallText, description)\n- ВСЕ элементы массивов customerNeeds, missedOpportunities, recommendations\n- Все текстовые поля в leadScoring (recommendation)\n- Все текстовые поля в statistics\n\n**Независимо от языка диалогов, результат должен быть на указанном языке вывода!**\n\n---\n\n# 🔄 РЕЖИМ РАБОТЫ\n\n## Если это ОБНОВЛЕНИЕ существующего анализа:\n1. **Используй предыдущий анализ как базу** — не начинай с нуля\n2. **Анализируй только НОВЫЕ сообщения** — они предоставлены отдельно\n3. **ОБНОВИ существующие данные** на основе новой информации:\n   - Lead Score может повыситься или понизиться\n   - Могут появиться новые потребности (добавь к существующим)\n   - Эмоциональный тон может измениться\n   - Рекомендации могут обновиться\n4. **Сохраняй релевантную историю** — не удаляй важные данные из предыдущего анализа\n5. **Отмечай изменения** — если Lead Score изменился, отрази это в recommendation\n\n## Если это ПЕРВИЧНЫЙ анализ:\n- Анализируй весь предоставленный диалог с нуля\n- Следуй стандартным критериям анализа\n\n---\n\n#Задача: Проанализировать email-диалоги и оценить эффективность взаимодействия, выявить потребности клиентов, определить упущенные возможности продаж и предоставить рекомендации по улучшению.\n\n#Критерии анализа:\n\n1. **Эмоциональный тон переписки**:\n   - Определите общий эмоциональный тон (позитивный, негативный, нейтральный)\n   - Оцените уровень удовлетворенности клиента (0-100%)\n   - Опишите динамику эмоций в диалоге\n\n2. **Выявленные потребности клиента**:\n   - Перечислите явные потребности и запросы\n   - Определите наиболее частые вопросы\n   - Выявите скрытые потребности\n\n3. **Упущенные возможности продаж**:\n   - Выделите моменты для дополнительных предложений\n   - Укажите нерешённые проблемы\n   - Определите случаи неполных ответов\n\n4. **Рекомендации по улучшению**:\n   - Предложите конкретные улучшения для ответов\n   - Рекомендуйте темы для follow-up\n   - Укажите необходимые изменения в подходе\n\n# Lead Scoring для Email (0-100 баллов):\n\n## Критерии оценки:\n\n### 1. Удовлетворенность и тон (0-25 баллов)\n- 20-25: Очень довольный клиент, позитивный тон\n- 15-19: Удовлетворен, нейтрально-позитивный\n- 10-14: Нейтральный\n- 5-9: Есть недовольство\n- 0-4: Явное недовольство\n\n### 2. Качество контактных данных (0-20 баллов)\n- Полное имя в подписи: +5\n- Должность: +5\n- Компания: +5\n- Телефон в подписи: +5\n\n### 3. Активность и вовлеченность (0-15 баллов)\n- Количество ответов от клиента\n- Скорость ответов\n- Длина и содержательность писем\n- Задает уточняющие вопросы\n\n### 4. Покупательские намерения (0-25 баллов)\n- Прямые вопросы о цене: +10\n- Вопросы о функционале: +5\n- Запрос демо/презентации: +10\n- Сравнение с конкурентами: +5\n\n### 5. Срочность потребности (0-15 баллов)\n- \"Срочно нужно\": 15\n- \"В этом месяце\": 10\n- \"Планируем\": 5\n- \"Может быть позже\": 2\n\n## Температура лида:\n- **hot**: 80-100 баллов\n- **warm**: 50-79 баллов\n- **cold**: 0-49 баллов\n\n---\n\n#Формат ответа - чистый JSON без markdown:\n{\n  \"emotionalTone\": {\n    \"overall\": \"positive/negative/neutral\",\n    \"overallText\": \"краткое описание тона\",\n    \"satisfaction\": число (0-100),\n    \"description\": \"детальное описание эмоциональной динамики\"\n  },\n  \"customerNeeds\": [\"список потребностей\"],\n  \"missedOpportunities\": [\"список упущенных возможностей\"],\n  \"recommendations\": [\"список рекомендаций\"],\n  \"statistics\": {\n    \"totalDialogs\": число,\n    \"avgSatisfaction\": число,\n    \"resolvedPercentage\": число\n  },\n  \"leadScoring\": {\n    \"score\": число (0-100),\n    \"temperature\": \"hot/warm/cold\",\n    \"factors\": {\n      \"satisfaction\": число,\n      \"contacts\": число,\n      \"engagement\": число,\n      \"intentions\": число,\n      \"urgency\": число\n    },\n    \"recommendation\": \"рекомендация по работе с лидом\"\n  }\n}\n\n---\n\n# ВАЖНО\n\n1. **КРИТИЧЕСКИ ВАЖНО:** Возвращайте ТОЛЬКО чистый JSON без markdown, тройных кавычек или дополнительного текста!\n\n2. **Язык ответа:** ВСЕ текстовые поля должны быть на языке, указанном в \"Язык вывода результатов\", независимо от языка переписки!\n\n3. **При обновлении:** Если это обновление — учитывай предыдущий анализ, не игнорируй его!\n\n4. **Баланс детальности:** Анализ должен быть информативным, но компактным\n\n5. **Контекст важнее слов:** Защитные механизмы часто скрывают реальный интерес"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        416,
+        96
+      ],
+      "id": "416e21fb-86d4-4027-8b2e-691ace79ff85",
+      "name": "🤖 Email AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        336,
+        304
+      ],
+      "id": "f76a2136-6889-448a-ae3f-079718493e2d",
+      "name": "🧠 Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "abo0BDHSJPM0pgRU",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Парсим ответ AI агента\nconst aiResponse = items[0].json;\nconst mergedData = $('🔀 Merge Check Data').first().json;\n\nlet responseText = '';\nlet parsedResponse = null;\n\n// Получаем текст ответа\nif (aiResponse.output) {\n    responseText = aiResponse.output;\n} else if (aiResponse.text) {\n    responseText = aiResponse.text;\n} else if (typeof aiResponse === 'string') {\n    responseText = aiResponse;\n} else if (aiResponse.emotionalTone) {\n    parsedResponse = aiResponse;\n}\n\n// Парсим если есть текст\nif (!parsedResponse && responseText) {\n    let cleanJson = responseText.trim();\n    \n    // Убираем markdown\n    if (cleanJson.startsWith('```json')) {\n        cleanJson = cleanJson.substring(7);\n    } else if (cleanJson.startsWith('```')) {\n        cleanJson = cleanJson.substring(3);\n    }\n    if (cleanJson.endsWith('```')) {\n        cleanJson = cleanJson.substring(0, cleanJson.length - 3);\n    }\n    cleanJson = cleanJson.trim();\n    \n    // Попытка 1: прямой парсинг\n    try {\n        parsedResponse = JSON.parse(cleanJson);\n    } catch (e1) {\n        // Попытка 2: извлечение JSON\n        try {\n            const firstBrace = cleanJson.indexOf('{');\n            const lastBrace = cleanJson.lastIndexOf('}');\n            if (firstBrace !== -1 && lastBrace > firstBrace) {\n                parsedResponse = JSON.parse(cleanJson.substring(firstBrace, lastBrace + 1));\n            }\n        } catch (e2) {\n            // Попытка 3: обработка escape\n            try {\n                let fixedJson = cleanJson;\n                if (fixedJson.startsWith('\"') && fixedJson.endsWith('\"')) {\n                    fixedJson = fixedJson.slice(1, -1);\n                }\n                fixedJson = fixedJson.replace(/\\\\\\\\n/g, '\\\\n').replace(/\\\\\\\\t/g, '\\\\t');\n                const fb = fixedJson.indexOf('{');\n                const lb = fixedJson.lastIndexOf('}');\n                if (fb !== -1 && lb > fb) {\n                    parsedResponse = JSON.parse(fixedJson.substring(fb, lb + 1));\n                }\n            } catch (e3) {}\n        }\n    }\n}\n\n// Fallback при ошибке\nif (!parsedResponse) {\n    parsedResponse = {\n        emotionalTone: { overall: 'neutral', overallText: 'Ошибка парсинга', satisfaction: 50, description: 'Ошибка парсинга ответа AI' },\n        customerNeeds: ['Требуется повторный анализ'],\n        missedOpportunities: ['Данные недоступны'],\n        recommendations: ['Повторите анализ'],\n        statistics: { totalDialogs: 1, avgSatisfaction: 50, resolvedPercentage: 0 },\n        leadScoring: { score: 0, temperature: 'cold', factors: { satisfaction: 0, contacts: 0, engagement: 0, intentions: 0, urgency: 0 }, recommendation: 'Требуется повторный анализ' }\n    };\n}\n\nparsedResponse.email = mergedData.email;\n\nreturn [{ json: parsedResponse }];"
+      },
+      "id": "7c2e185b-10af-439e-a4f7-adb155c0c00f",
+      "name": "📊 Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "f558a9da-8986-4ba4-af6a-78f23e2f1e98",
+      "name": "📤 Send Analysis Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1008,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=-- Сохраняем результаты анализа email (все поля как JSONB)\nINSERT INTO {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }} (\n    email,\n    analysis_type,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    lead_scoring,\n    statistics,\n    satisfaction_percentage,\n    created_at\n) VALUES (\n    '{{ $json.email }}',\n    'single',\n    $js${{ JSON.stringify($json.emotionalTone) }}$js$::jsonb,\n    $js${{ JSON.stringify($json.customerNeeds) }}$js$::jsonb,\n    $js${{ JSON.stringify($json.missedOpportunities) }}$js$::jsonb,\n    $js${{ JSON.stringify($json.recommendations) }}$js$::jsonb,\n    $js${{ JSON.stringify($json.leadScoring) }}$js$::jsonb,\n    $js${{ JSON.stringify($json.statistics) }}$js$::jsonb,\n    {{ $json.emotionalTone?.satisfaction || $json.statistics?.avgSatisfaction || 0 }},\n    NOW()\n)\nON CONFLICT (email) DO UPDATE SET\n    emotional_tone = EXCLUDED.emotional_tone,\n    customer_needs = EXCLUDED.customer_needs,\n    missed_opportunities = EXCLUDED.missed_opportunities,\n    recommendations = EXCLUDED.recommendations,\n    lead_scoring = EXCLUDED.lead_scoring,\n    statistics = EXCLUDED.statistics,\n    satisfaction_percentage = EXCLUDED.satisfaction_percentage,\n    updated_at = NOW()\nRETURNING *;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1008,
+        208
+      ],
+      "id": "0b1c331e-a02d-43a5-9fac-c2875931e75d",
+      "name": "💾 Save Analysis",
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⚙️ CONFIG": {
+      "main": [
+        [
+          {
+            "node": "🌐 Webhook: Analyze Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook: Analyze Email": {
+      "main": [
+        [
+          {
+            "node": "🔐 Security Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Security Check": {
+      "main": [
+        [
+          {
+            "node": "🔀 Auth Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Auth Check": {
+      "main": [
+        [
+          {
+            "node": "📥 Process Analysis Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 Process Analysis Request": {
+      "main": [
+        [
+          {
+            "node": "📋 Get Analysis Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Get Analysis Language": {
+      "main": [
+        [
+          {
+            "node": "🔄 Merge with Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Merge with Language": {
+      "main": [
+        [
+          {
+            "node": "🔍 Check New Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Check New Messages": {
+      "main": [
+        [
+          {
+            "node": "🔀 Merge Check Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Merge Check Data": {
+      "main": [
+        [
+          {
+            "node": "🔀 Has New Messages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Has New Messages?": {
+      "main": [
+        [
+          {
+            "node": "🔀 Analysis Type?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📋 Get Existing Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Get Existing Analysis": {
+      "main": [
+        [
+          {
+            "node": "📝 Format Existing Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Format Existing Analysis": {
+      "main": [
+        [
+          {
+            "node": "📤 Return Cached Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Analysis Type?": {
+      "main": [
+        [
+          {
+            "node": "📧 Get Single Dialog",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📧 Get All Dialogs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Get Single Dialog": {
+      "main": [
+        [
+          {
+            "node": "📝 Format Dialogs for AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Get All Dialogs": {
+      "main": [
+        [
+          {
+            "node": "📝 Format Dialogs for AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Format Dialogs for AI": {
+      "main": [
+        [
+          {
+            "node": "🤖 Email AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Email AI Agent": {
+      "main": [
+        [
+          {
+            "node": "📊 Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Google Gemini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 Email AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "📤 Send Analysis Result",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "💾 Save Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "53710e37-b733-4ec5-b381-66161fd724dc",
+  "meta": {
+    "instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"
+  },
+  "id": "xPxOYs0EDQVVEd0R",
+  "tags": []
+}
