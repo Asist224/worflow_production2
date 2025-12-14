@@ -1,0 +1,245 @@
+{
+  "name": "📧 Email Automation Main_4 [Production EN]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📧 Email Automation Main - Part 4\n\n### Description\nSendPulse contact synchronization.\nChecks leads and moves them to customers book after purchase.\n\n---\n\n### 🔧 Setup\n\n1. **Open `⚙️ CONFIG` node** and configure:\n   - `sendpulse_api_id` — your SendPulse API ID\n   - `sendpulse_api_secret` — your SendPulse API Secret\n   - `table_sendpulse_sync` — sync table\n   - SendPulse addressbook IDs\n\n2. **Connect credentials:**\n   - PostgreSQL\n\n3. **Configure interval** in Schedule Trigger (recommended every 6 hours)\n\n4. **Activate workflow**\n\n---\n\n### ⚙️ What this part does:\n- Gets leads from sync DB\n- Checks each email in SendPulse customers book\n- If email became customer - removes from leads book\n- Updates status in DB\n- Logs results"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-19300, -3900]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "sendpulse-id", "name": "sendpulse_api_id", "value": "YOUR_SENDPULSE_API_ID", "type": "string"},
+            {"id": "sendpulse-secret", "name": "sendpulse_api_secret", "value": "YOUR_SENDPULSE_API_SECRET", "type": "string"},
+            {"id": "table-sync", "name": "table_sendpulse_sync", "value": "sendpulse_sync", "type": "string"},
+            {"id": "addressbook-customers-ru", "name": "addressbook_customers_ru", "value": 1590611, "type": "number"},
+            {"id": "addressbook-customers-en", "name": "addressbook_customers_en", "value": 1591645, "type": "number"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-main",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-18800, -3728]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "hours", "hoursInterval": 6}]
+        }
+      },
+      "id": "00af2ac0-7f8c-4566-a865-06092fe58f80",
+      "name": "⏰ SendPulse Sync Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-18960, -3728]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\n\nreturn [{\n  json: {\n    grant_type: 'client_credentials',\n    client_id: config.sendpulse_api_id,\n    client_secret: config.sendpulse_api_secret,\n    config: config\n  }\n}];"
+      },
+      "id": "4ace32b8-c5eb-435b-a223-71f2f0a8880a",
+      "name": "🔐 Prepare SendPulse Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18624, -3728]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.sendpulse.com/oauth/access_token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {"name": "grant_type", "value": "={{ $json.grant_type }}"},
+            {"name": "client_id", "value": "={{ $json.client_id }}"},
+            {"name": "client_secret", "value": "={{ $json.client_secret }}"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "27aed98c-b10c-43dd-b4b5-b8dd44a34ca5",
+      "name": "🔑 Get SendPulse Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-18448, -3728]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT DISTINCT \n    ss.email,\n    ss.addressbook_id,\n    ss.addressbook_name,\n    CASE \n        WHEN ss.addressbook_name LIKE '%_ru' THEN 'ru'\n        ELSE 'en'\n    END as language\nFROM {{ $('⚙️ CONFIG').first().json.table_sendpulse_sync }} ss\nWHERE ss.sync_status IN ('added', 'updated')\n  AND ss.addressbook_name IN ('leads_ru', 'leads_en')\n  AND ss.sync_date > NOW() - INTERVAL '30 days'\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "167ec0d5-8e7b-4189-83cd-3e31a1cfbd39",
+      "name": "📥 Get Leads to Check",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-18256, -3728],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {"options": {}},
+      "id": "04509480-b3f1-40a4-a616-e713694df534",
+      "name": "🔄 Split Leads Batch",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-18064, -3728]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\nconst currentItem = $input.first().json;\nconst sendPulseToken = $items(\"🔑 Get SendPulse Token\")[0].json;\n\nconst customersBookId = currentItem.language === 'ru' ? \n  config.addressbook_customers_ru : config.addressbook_customers_en;\n\nreturn [{\n  json: {\n    ...currentItem,\n    token: sendPulseToken.access_token,\n    tokenType: sendPulseToken.token_type || 'Bearer',\n    customersBookId: customersBookId,\n    config: config\n  }\n}];"
+      },
+      "id": "3e1644d8-d806-429f-b658-e03efd48d223",
+      "name": "📋 Prepare Check Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17776, -3760]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $json.customersBookId }}/emails/{{ $json.email }}",
+        "sendHeaders": true,
+        "headerParameters": {"parameters": [{"name": "Authorization", "value": "={{ $json.tokenType }} {{ $json.token }}"}]},
+        "options": {"response": {"response": {"neverError": true}}}
+      },
+      "id": "259bfaf6-5519-42b8-9667-9fc7dc294d1f",
+      "name": "🔍 Check Customer Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-17536, -3760]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\nconst response = $input.first().json;\nconst checkData = $items(\"📋 Prepare Check Data\")[0].json;\n\nlet isCustomer = false;\n\nif (response && response.email === checkData.email) {\n  isCustomer = true;\n} else if (response.variables && Array.isArray(response.variables)) {\n  isCustomer = true;\n} else if (response.abook_id) {\n  isCustomer = true;\n}\n\nreturn [{\n  json: {\n    ...checkData,\n    isCustomer: isCustomer,\n    checkResponse: response,\n    config: config\n  }\n}];"
+      },
+      "id": "7cbe62eb-b58f-4565-b263-9967b6b2fe61",
+      "name": "📝 Process Check Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17328, -3760]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.isCustomer }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true"}, "id": "29e0950c-37f1-422c-9986-afc9f9b588a4"}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cf364c28-82ff-4193-adb5-c15af51b0dcb",
+      "name": "🔀 Became Customer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-17136, -3760]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $json.addressbook_id }}/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Authorization", "value": "={{ $json.tokenType }} {{ $json.token }}"},
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"emails\": [\"{{ $json.email }}\"]\n}",
+        "options": {}
+      },
+      "id": "be7f4ef2-9754-4f17-916d-7d07da0af520",
+      "name": "❌ Remove from Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-16960, -3824]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nreturn [{\n  json: {\n    processed: true,\n    email: data.email,\n    stillLead: true\n  }\n}];"
+      },
+      "id": "2ba8f3d4-d9bb-4e5c-a8ae-ac9c8e67069e",
+      "name": "📝 Log Still Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-16960, -3664]
+    },
+    {
+      "parameters": {
+        "jsCode": "const checkData = $items(\"📝 Process Check Result\")[0].json;\nconst removeResult = $input.first().json;\n\nreturn [{\n  json: {\n    email: checkData.email,\n    addressbook_id: checkData.addressbook_id,\n    removeResult: removeResult.result || true,\n    status: 'moved_to_customers',\n    config: checkData.config\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-16784, -3824],
+      "id": "ef4c53e3-bf75-4306-b6a5-f2eb4d44d68f",
+      "name": "📋 Prepare Update Data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE {{ $json.config.table_sendpulse_sync }}\nSET \n    sync_status = 'moved_to_customers',\n    sync_date = NOW()\nWHERE email = '{{ $json.email }}'\n  AND addressbook_id = {{ $json.addressbook_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "d13e0635-0802-4257-ac60-4bb195e91b7a",
+      "name": "💾 Update Sync Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-16592, -3824],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\n\nreturn [{\n  json: {\n    processed: true,\n    email: result.email,\n    movedAt: result.sync_date\n  }\n}];"
+      },
+      "id": "a0818ed9-3fdf-4b6c-957b-c151a4f024f5",
+      "name": "✅ Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-16400, -3824]
+    },
+    {
+      "parameters": {
+        "jsCode": "const totalProcessed = $items(\"📥 Get Leads to Check\").length;\n\nconst summary = {\n  status: 'completed',\n  totalProcessed: totalProcessed,\n  completedAt: new Date().toISOString(),\n  message: `SendPulse sync completed. Processed ${totalProcessed} lead(s).`\n};\n\nreturn [{json: summary}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17856, -3904],
+      "id": "f2936649-f7fb-4b82-9e45-2c660c9a659c",
+      "name": "📊 Sync Complete Report"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⏰ SendPulse Sync Schedule": {"main": [[{"node": "⚙️ CONFIG", "type": "main", "index": 0}]]},
+    "⚙️ CONFIG": {"main": [[{"node": "🔐 Prepare SendPulse Auth", "type": "main", "index": 0}]]},
+    "🔐 Prepare SendPulse Auth": {"main": [[{"node": "🔑 Get SendPulse Token", "type": "main", "index": 0}]]},
+    "🔑 Get SendPulse Token": {"main": [[{"node": "📥 Get Leads to Check", "type": "main", "index": 0}]]},
+    "📥 Get Leads to Check": {"main": [[{"node": "🔄 Split Leads Batch", "type": "main", "index": 0}]]},
+    "🔄 Split Leads Batch": {"main": [[{"node": "📊 Sync Complete Report", "type": "main", "index": 0}], [{"node": "📋 Prepare Check Data", "type": "main", "index": 0}]]},
+    "📋 Prepare Check Data": {"main": [[{"node": "🔍 Check Customer Status", "type": "main", "index": 0}]]},
+    "🔍 Check Customer Status": {"main": [[{"node": "📝 Process Check Result", "type": "main", "index": 0}]]},
+    "📝 Process Check Result": {"main": [[{"node": "🔀 Became Customer?", "type": "main", "index": 0}]]},
+    "🔀 Became Customer?": {"main": [[{"node": "❌ Remove from Leads", "type": "main", "index": 0}], [{"node": "📝 Log Still Lead", "type": "main", "index": 0}]]},
+    "❌ Remove from Leads": {"main": [[{"node": "📋 Prepare Update Data", "type": "main", "index": 0}]]},
+    "📝 Log Still Lead": {"main": [[{"node": "🔄 Split Leads Batch", "type": "main", "index": 0}]]},
+    "📋 Prepare Update Data": {"main": [[{"node": "💾 Update Sync Status", "type": "main", "index": 0}]]},
+    "💾 Update Sync Status": {"main": [[{"node": "✅ Log Success", "type": "main", "index": 0}]]},
+    "✅ Log Success": {"main": [[{"node": "🔄 Split Leads Batch", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "production-v1",
+  "meta": {"instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"},
+  "id": "email-automation-main-4-en",
+  "tags": []
+}

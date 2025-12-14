@@ -1,0 +1,230 @@
+{
+  "name": "📧 Email Automation Main_3 [Production RU]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📧 Email Automation Main - Часть 3\n\n### Описание\nАвтоматическая обработка follow-up писем.\nПроверяет запланированные follow-ups и отправляет персонализированные письма.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `telegram_chat_id` — ID чата для уведомлений\n   - `table_email_follow_ups` — таблица follow-ups\n   - `table_gmail_conversations` — таблица переписки\n\n2. **Подключите credentials:**\n   - PostgreSQL\n   - Gmail OAuth2\n   - Telegram Bot\n   - Google Gemini API\n\n3. **Настройте интервал** в Schedule Trigger (рекомендуется каждые 12 часов)\n\n4. **Активируйте workflow**\n\n---\n\n### ⚙️ Что делает эта часть:\n- Получает pending follow-ups из БД\n- Анализирует тип follow-up и lead score\n- Генерирует персонализированное письмо с AI\n- Отправляет follow-up через Gmail\n- Обновляет статус в БД\n- Уведомляет менеджера в Telegram"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-19500, -3600]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "telegram-chat", "name": "telegram_chat_id", "value": "-1002588885971", "type": "string"},
+            {"id": "table-followups", "name": "table_email_follow_ups", "value": "email_follow_ups", "type": "string"},
+            {"id": "table-conversations", "name": "table_gmail_conversations", "value": "gmail_conversations", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-main",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-18992, -3376]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "hours", "hoursInterval": 12}]
+        }
+      },
+      "id": "29601cb8-73b4-4d29-b334-bdbf8563adc4",
+      "name": "⏰ Check Twice Daily",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-19152, -3376]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=WITH pending_followups AS (\n    SELECT \n        f.*,\n        gc.messages,\n        gc.lead_score,\n        gc.language,\n        gc.subject,\n        gc.message_count,\n        CASE \n            WHEN gc.message_count IS NULL OR gc.message_count = 0 THEN 'no_response'\n            WHEN gc.lead_score >= 70 THEN 'high_interest'\n            WHEN gc.message_count >= 2 THEN 'active_discussion'\n            WHEN gc.lead_score >= 50 THEN 'standard'\n            ELSE 'low_interest'\n        END as followup_type\n    FROM {{ $json.table_email_follow_ups }} f\n    LEFT JOIN {{ $json.table_gmail_conversations }} gc ON f.thread_id = gc.thread_id\n    WHERE f.status = 'pending'\n      AND f.follow_up_date <= NOW()\n      AND f.follow_up_date > NOW() - INTERVAL '24 hours'\n)\nSELECT * FROM pending_followups\nORDER BY follow_up_date ASC\nLIMIT 20;",
+        "options": {}
+      },
+      "id": "e105af0c-f22d-41b0-bb17-5a84c7d985d6",
+      "name": "📥 Get Pending Follow-ups",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-18816, -3376],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.lead_score }}", "rightValue": 50, "operator": {"type": "number", "operation": "gte"}, "id": "9199afa8-e9b6-41a9-9867-ec632dbd6765"}],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "7ff995f1-4dd1-47a4-9132-f3ae667afac6",
+      "name": "🔀 Check Follow-up Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-18624, -3376]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Email: {{ $json.email }}\nЯзык: {{ $json.language }}\nLead Score: {{ $json.lead_score }}\nТип follow-up: {{ $json.followup_type }}\nПоследняя тема: {{ $json.subject }}\nИстория: {{ $json.messages }}",
+        "options": {
+          "systemMessage": "Ты - менеджер по продажам Cryptomator. Создай эффективное follow-up письмо.\n\n# ТИПЫ FOLLOW-UP:\n\n## no_response - НЕ отправляй (shouldSend: false)\n## high_interest (lead_score >= 70) - персональное предложение со скидкой\n## active_discussion - кейсы и спецпредложение\n## standard - оценивай по контексту\n\n# JSON ОТВЕТ:\n```json\n{\n  \"shouldSend\": true/false,\n  \"reason\": \"причина на языке клиента\",\n  \"emailContent\": \"HTML письма\",\n  \"subject\": \"тема на языке клиента\",\n  \"discount\": \"размер скидки\",\n  \"urgency\": \"high/medium/low\"\n}\n```"
+        }
+      },
+      "id": "3548af8a-f370-4c1a-a4fa-a892c1fe8f83",
+      "name": "🤖 Generate Follow-up",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [-18352, -3600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\nconst aiResponse = $input.first().json;\nconst originalData = $items(\"🔀 Check Follow-up Type\")[0].json;\n\nlet decision;\ntry {\n    if (typeof aiResponse.output === 'string') {\n        const cleanJson = aiResponse.output.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n        decision = JSON.parse(cleanJson);\n    } else {\n        decision = aiResponse.output;\n    }\n} catch (error) {\n    decision = {\n        shouldSend: false,\n        reason: 'Ошибка генерации письма'\n    };\n}\n\nreturn [{\n    json: {\n        ...originalData,\n        ...decision,\n        followup_id: originalData.id,\n        config: config\n    }\n}];"
+      },
+      "id": "3d774d20-0fc5-4b12-a7d6-d6a8f825bf46",
+      "name": "📝 Parse Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18016, -3584]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1},
+          "conditions": [{"leftValue": "={{ $json.shouldSend }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true"}, "id": "81343c75-40af-4fbe-8071-b3b55779e19b"}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c397ba2d-77d4-42e1-8440-9e8e61d30c41",
+      "name": "🔀 Should Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-17792, -3520]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.emailContent }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Cryptomator Team",
+          "replyTo": "support@cryptomator.pro"
+        }
+      },
+      "id": "c83a000d-b03a-4bc9-9a8c-ef2c4d17200f",
+      "name": "📤 Send Follow-up Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-17584, -3536],
+      "credentials": {"gmailOAuth2": {"id": "ev0cwU3ZEXqPZ9wU", "name": "Gmail account"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE {{ $json.config.table_email_follow_ups }}\nSET \n    status = 'sent',\n    sent_at = NOW(),\n    notes = CONCAT(notes, ' | Sent: ', NOW()::text)\nWHERE id = {{ $json.followup_id }};\n\nUPDATE {{ $json.config.table_gmail_conversations }}\nSET message_count = message_count + 1\nWHERE thread_id = '{{ $json.thread_id }}';\n\nSELECT 'Follow-up sent' as status;",
+        "options": {}
+      },
+      "id": "5ccdfb27-646b-4bb4-a94c-a5c3995c190c",
+      "name": "💾 Update Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-17200, -3536],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE {{ $json.config.table_email_follow_ups }}\nSET \n    status = 'skipped',\n    notes = CONCAT(notes, ' | Skipped: ', '{{ $json.reason.replace(/'/g, \"''\") }}')\nWHERE id = {{ $json.followup_id }};\n\nSELECT 'Skipped' as status;",
+        "options": {}
+      },
+      "id": "0a5c6f86-eede-4416-8810-835cfdb1412a",
+      "name": "⏭️ Mark as Skipped",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-17280, -3280],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {"options": {}},
+      "id": "e9d3e9a6-99ba-49ef-80a3-06b55fe81d4f",
+      "name": "🧠 Gemini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [-18400, -3440],
+      "credentials": {"googlePalmApi": {"id": "abo0BDHSJPM0pgRU", "name": "Google Gemini(PaLM) Api account"}}
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('⚙️ CONFIG').first().json.telegram_chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {"appendAttribution": false}
+      },
+      "id": "e2392f6b-9122-4801-813f-73b695ddcb67",
+      "name": "📱 Notify Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-16720, -3360],
+      "credentials": {"telegramApi": {"id": "bHlhE9zUMfwWqM9t", "name": "Manager Telegram Bot"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseDecision = $items(\"📝 Parse Decision\")[0].json;\nconst pendingData = $items(\"📥 Get Pending Follow-ups\")[0].json;\n\nreturn [{\n  json: {\n    followup_id: pendingData.id,\n    email: pendingData.email,\n    thread_id: pendingData.thread_id,\n    lead_score: pendingData.lead_score,\n    emailContent: parseDecision.emailContent ? parseDecision.emailContent.substring(0, 500) : 'Follow-up sent',\n    config: $('⚙️ CONFIG').first().json\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17376, -3536],
+      "id": "dc1f568d-d9e0-4186-864a-47fd71467a17",
+      "name": "📋 Prepare Update Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseDecision = $items(\"📝 Parse Decision\")[0].json;\nconst pendingData = $items(\"📥 Get Pending Follow-ups\")[0].json;\n\nreturn [{\n  json: {\n    followup_id: pendingData.id,\n    reason: parseDecision.reason || 'Низкий lead score или no_response',\n    config: $('⚙️ CONFIG').first().json\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17632, -3392],
+      "id": "1c866ea1-e565-40ff-b389-eda677a4bd8f",
+      "name": "📋 Prepare Skip Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sqlResult = $input.first().json;\nconst pendingData = $items(\"📥 Get Pending Follow-ups\")[0]?.json || {};\nconst parseDecision = $items(\"📝 Parse Decision\")[0]?.json || {};\n\nlet status = 'Неизвестно';\nif (sqlResult?.status === 'Follow-up sent') {\n  status = 'Отправлено';\n} else if (sqlResult?.status === 'Skipped') {\n  status = 'Пропущено';\n}\n\nconst email = pendingData.email || 'Не указан';\nconst leadScore = pendingData.lead_score || 0;\n\nlet reason = parseDecision.reason || 'Автоматическая обработка';\nreason = reason.replace(/'/g, '').replace(/\"/g, '').replace(/`/g, '').replace(/\\n/g, ' ').substring(0, 200);\n\nconst icon = status === 'Отправлено' ? '✅' : '⏭️';\nconst message = `📊 Follow-up Report\n\n${icon} Статус: ${status}\n📧 Email: ${email}\n💯 Lead Score: ${leadScore}\n📝 Причина: ${reason}`;\n\nreturn [{json: {message: message}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-16896, -3360],
+      "id": "a1649f81-b901-44a2-9e5f-c157fbd04f49",
+      "name": "📊 Prepare Telegram Data"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⏰ Check Twice Daily": {"main": [[{"node": "⚙️ CONFIG", "type": "main", "index": 0}]]},
+    "⚙️ CONFIG": {"main": [[{"node": "📥 Get Pending Follow-ups", "type": "main", "index": 0}]]},
+    "📥 Get Pending Follow-ups": {"main": [[{"node": "🔀 Check Follow-up Type", "type": "main", "index": 0}]]},
+    "🔀 Check Follow-up Type": {"main": [[{"node": "🤖 Generate Follow-up", "type": "main", "index": 0}], [{"node": "⏭️ Mark as Skipped", "type": "main", "index": 0}]]},
+    "🤖 Generate Follow-up": {"main": [[{"node": "📝 Parse Decision", "type": "main", "index": 0}]]},
+    "📝 Parse Decision": {"main": [[{"node": "🔀 Should Send?", "type": "main", "index": 0}]]},
+    "🔀 Should Send?": {"main": [[{"node": "📤 Send Follow-up Email", "type": "main", "index": 0}], [{"node": "📋 Prepare Skip Data", "type": "main", "index": 0}]]},
+    "📤 Send Follow-up Email": {"main": [[{"node": "📋 Prepare Update Data", "type": "main", "index": 0}]]},
+    "💾 Update Status": {"main": [[{"node": "📊 Prepare Telegram Data", "type": "main", "index": 0}]]},
+    "⏭️ Mark as Skipped": {"main": [[{"node": "📊 Prepare Telegram Data", "type": "main", "index": 0}]]},
+    "🧠 Gemini Model": {"ai_languageModel": [[{"node": "🤖 Generate Follow-up", "type": "ai_languageModel", "index": 0}]]},
+    "📋 Prepare Update Data": {"main": [[{"node": "💾 Update Status", "type": "main", "index": 0}]]},
+    "📋 Prepare Skip Data": {"main": [[{"node": "⏭️ Mark as Skipped", "type": "main", "index": 0}]]},
+    "📊 Prepare Telegram Data": {"main": [[{"node": "📱 Notify Telegram", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "production-v1",
+  "meta": {"instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"},
+  "id": "email-automation-main-3-ru",
+  "tags": []
+}

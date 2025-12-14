@@ -1,0 +1,261 @@
+{
+  "name": "📧 Email Automation Main_2 [Production RU]",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 📧 Email Automation Main - Часть 2\n\n### Описание\nАвтоматический ответ на входящие email.\nОбрабатывает непрочитанные письма и генерирует ответы с помощью AI.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `telegram_chat_id` — ID чата для уведомлений\n   - `table_gmail_conversations` — таблица для истории переписки\n   - `google_sheets_id` — ID таблицы с базой знаний\n\n2. **Подключите credentials:**\n   - PostgreSQL\n   - Gmail OAuth2\n   - Google Sheets OAuth2\n   - Telegram Bot\n   - Google Gemini API\n\n3. **Настройте интервал** в Schedule Trigger\n\n4. **Активируйте workflow**\n\n---\n\n### ⚙️ Что делает эта часть:\n- Получает непрочитанные письма из Gmail\n- Фильтрует noreply и автоматические письма\n- Загружает историю переписки из БД\n- Генерирует ответ с помощью AI (Gemini)\n- Отправляет ответ через Gmail\n- Помечает письмо как прочитанное\n- Уведомляет менеджера в Telegram"
+      },
+      "id": "sticky-note-instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-18600, -3600]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {"id": "telegram-chat", "name": "telegram_chat_id", "value": "-1002588885971", "type": "string"},
+            {"id": "table-conversations", "name": "table_gmail_conversations", "value": "gmail_conversations", "type": "string"},
+            {"id": "sheets-id", "name": "google_sheets_id", "value": "17jog8YLtJJAolGVCLKATWsz6fVJi-aPrGxP3fKtokS4", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-main",
+      "name": "⚙️ CONFIG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-18064, -3328]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "minutes"}]
+        }
+      },
+      "id": "1572622e-be80-40f1-ab8f-dae4fe28f5b7",
+      "name": "⏰ Schedule Check answer",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [-18224, -3328]
+    },
+    {
+      "parameters": {"options": {}},
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [-17312, -3136],
+      "id": "8cd378f5-d3ea-45d3-840d-49cfc1ac6355",
+      "name": "🧠 Gemini Model Reply",
+      "credentials": {"googlePalmApi": {"id": "abo0BDHSJPM0pgRU", "name": "Google Gemini(PaLM) Api account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.first().json;\nconst historyData = $json;\nconst clientEmail = $('📜 Get History').first().json.email;\n\nconst retryCount = historyData.retryCount || 0;\nif (retryCount > 2) {\n  return [];\n}\n\nlet emailContent = '';\nlet shouldSendReply = true;\nlet replyData = {};\n\ntry {\n  let output = aiResponse.output;\n  \n  if (typeof output === 'string') {\n    const trimmedOutput = output.trim();\n    \n    if (trimmedOutput.startsWith('<!DOCTYPE') || trimmedOutput.startsWith('<html')) {\n      emailContent = trimmedOutput;\n    } else {\n      try {\n        const cleanJson = trimmedOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n        const parsedData = JSON.parse(cleanJson);\n        \n        if (parsedData.replyData && parsedData.replyData.emailContent) {\n          emailContent = parsedData.replyData.emailContent;\n          replyData = parsedData;\n        } else if (parsedData.emailContent) {\n          emailContent = parsedData.emailContent;\n          replyData = parsedData;\n        } else {\n          if (typeof parsedData === 'string' && parsedData.includes('emailContent')) {\n            const innerParsed = JSON.parse(parsedData);\n            if (innerParsed.replyData && innerParsed.replyData.emailContent) {\n              emailContent = innerParsed.replyData.emailContent;\n              replyData = innerParsed;\n            }\n          }\n        }\n        \n        if (parsedData.shouldReply === false) {\n          shouldSendReply = false;\n        }\n        \n      } catch (parseError) {\n        if (trimmedOutput.includes('<!DOCTYPE') || trimmedOutput.includes('<html')) {\n          const htmlMatch = trimmedOutput.match(/<!DOCTYPE[\\s\\S]*<\\/html>/);\n          if (htmlMatch) {\n            emailContent = htmlMatch[0];\n          }\n        }\n      }\n    }\n  } else if (typeof output === 'object') {\n    replyData = output;\n    if (replyData.replyData && replyData.replyData.emailContent) {\n      emailContent = replyData.replyData.emailContent;\n    } else if (replyData.emailContent) {\n      emailContent = replyData.emailContent;\n    }\n  }\n  \n} catch (e) {\n  return [];\n}\n\nif (!shouldSendReply) {\n  return [];\n}\n\nif (!emailContent || !emailContent.includes('<')) {\n  return [];\n}\n\nif (!emailContent || emailContent.length < 50) {\n  return [{\n    json: {\n      needsRetry: true,\n      email: clientEmail,\n      retryCount: retryCount + 1,\n      ...historyData\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    to: clientEmail,\n    subject: $('🔄 Loop Over Items').first().json.subject,\n    emailContent: emailContent,\n    language: replyData.replyData?.language || historyData.language || 'ru',\n    attachments: replyData.replyData?.attachments || [],\n    threadId: historyData.thread_id,\n    messageId: historyData.messageId,\n    originalBody: historyData.conversation_history || '',\n    senderName: historyData.full_name || 'Client',\n    urgency: replyData.replyData?.urgency || 'medium',\n    leadScore: replyData.clientData?.leadScore || historyData.lead_score || 0,\n    intent: replyData.clientData?.intent || 'information',\n    internalNote: replyData.internalNote || '',\n    followUpDays: replyData.replyData?.followUpDays || 3\n  }\n}];"
+      },
+      "id": "8c17bd54-ce0f-488e-a26f-21a2250ab6c9",
+      "name": "📝 Parse AI Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-16944, -3328]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.emailContent }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Cryptomator Team",
+          "replyTo": "={{ $json.to }}"
+        }
+      },
+      "id": "286c654d-ec93-40c0-aa20-47ee39782ebb",
+      "name": "📤 Send Gmail Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-18208, -2992],
+      "credentials": {"gmailOAuth2": {"id": "ev0cwU3ZEXqPZ9wU", "name": "Gmail account"}}
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $items('📋 Process Incoming')[0].json.messageId }}"
+      },
+      "id": "870b9ba2-f8cd-4fbd-9741-c7fb46a94760",
+      "name": "✅ Mark as Read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-17824, -2992],
+      "credentials": {"gmailOAuth2": {"id": "ev0cwU3ZEXqPZ9wU", "name": "Gmail account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('⚙️ CONFIG').first().json;\nconst emailData = $input.first().json;\n\nfunction escapeMarkdown(text) {\n  if (!text) return '';\n  return String(text)\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\\*/g, '\\\\*')\n    .replace(/_/g, '\\\\_')\n    .replace(/\\[/g, '\\\\[')\n    .replace(/\\]/g, '\\\\]')\n    .replace(/\\(/g, '\\\\(')\n    .replace(/\\)/g, '\\\\)')\n    .replace(/~/g, '\\\\~')\n    .replace(/`/g, '\\\\`')\n    .replace(/>/g, '\\\\>')\n    .replace(/#/g, '\\\\#')\n    .replace(/\\+/g, '\\\\+')\n    .replace(/-/g, '\\\\-')\n    .replace(/=/g, '\\\\=')\n    .replace(/\\|/g, '\\\\|')\n    .replace(/\\{/g, '\\\\{')\n    .replace(/\\}/g, '\\\\}')\n    .replace(/\\./g, '\\\\.')\n    .replace(/!/g, '\\\\!');\n}\n\nconst urgencyEmoji = {'high': '🔴', 'medium': '🟡', 'low': '🟢'};\nconst intentEmoji = {'purchase': '💰', 'information': 'ℹ️', 'support': '🛠️', 'complaint': '⚠️'};\n\nconst safeName = escapeMarkdown(emailData.senderName || emailData.to || 'Клиент');\nconst safeEmail = escapeMarkdown(emailData.to || 'не указан');\nconst safeSubject = escapeMarkdown(emailData.subject || 'Без темы');\nconst safeNote = escapeMarkdown(emailData.internalNote || 'Автоматический ответ отправлен');\n\nconst message = `📧 *Автоответ отправлен*\n\n👤 *Клиент:* ${safeName}\n📮 *Email:* ${safeEmail}\n📝 *Тема:* ${safeSubject}\n🌐 *Язык:* ${emailData.language === 'ru' ? '🇷🇺 Русский' : '🇬🇧 English'}\n\n${urgencyEmoji[emailData.urgency] || '🟡'} *Приоритет:* ${emailData.urgency || 'medium'}\n${intentEmoji[emailData.intent] || 'ℹ️'} *Намерение:* ${emailData.intent || 'information'}\n💯 *Lead Score:* ${emailData.leadScore || 0}/100\n\n📌 *Заметка:* ${safeNote}\n⏰ *Follow\\\\-up через:* ${emailData.followUpDays || 3} дней\n\n\\\\#email\\\\_reply \\\\#${emailData.language || 'ru'} \\\\#${emailData.intent || 'info'}`;\n\nreturn [{json: {message: message, chat_id: config.telegram_chat_id}}];"
+      },
+      "id": "faee1d99-ba25-4292-83f1-187bd5ab8e28",
+      "name": "📊 Prepare Telegram Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17424, -2992]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {"appendAttribution": false, "parse_mode": "MarkdownV2"}
+      },
+      "id": "3ed45ba8-c3ef-43c2-8174-3dfa7882f957",
+      "name": "📱 Notify Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-17232, -2992],
+      "credentials": {"telegramApi": {"id": "fn7ywFo6SxQJtPcU", "name": "Telegram account"}}
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=КОНТЕКСТ ПИСЬМА:\n\nОт: {{ $('📋 Process Incoming').item.json.from }} ({{ $('📋 Process Incoming').item.json.senderName }})\nТема: {{ $('📋 Process Incoming').item.json.subject }}\nЯзык: {{ $('📋 Process Incoming').item.json.language === 'ru' ? 'Русский' : 'English' }}\nТекст письма:\n{{ $('📋 Process Incoming').item.json.body }}\n\nИСТОРИЯ ПЕРЕПИСКИ:\n{{ $json.conversation_history || 'Новый клиент' }}\n\nДАННЫЕ КЛИЕНТА:\nИмя: {{ $json.full_name || $('📋 Process Incoming').item.json.senderName }}\nLead Score: {{ $json.lead_score || 0 }}\nКоличество писем: {{ $json.message_count || 0 }}",
+        "options": {
+          "systemMessage": "# РОЛЬ: Email Менеджер Cryptomator\n\nТы - профессиональный менеджер по продажам Cryptomator. Отвечай на письма клиентов профессионально.\n\n# ВАЖНО: Используй Google Sheets Tool для получения актуальной информации.\n\n## ПРАВИЛА:\n1. ВСЕГДА отвечай на языке письма\n2. Используй имя клиента, если известно\n3. Учитывай историю переписки\n\n## JSON ОТВЕТ:\n```json\n{\n  \"shouldReply\": true,\n  \"replyData\": {\n    \"subject\": \"Re: тема\",\n    \"emailContent\": \"HTML письма\",\n    \"language\": \"ru/en\",\n    \"urgency\": \"medium\",\n    \"followUpDays\": 3\n  },\n  \"clientData\": {\n    \"leadScore\": 0-100,\n    \"intent\": \"information/purchase/support\",\n    \"readyToBuy\": true/false\n  },\n  \"internalNote\": \"заметка\"\n}\n```"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [-17248, -3328],
+      "id": "73500c31-7ce1-40da-9602-37fe97aa7456",
+      "name": "🤖 Gmail Reply Agent"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10,
+        "filters": {
+          "labelIds": ["UNREAD"],
+          "q": "is:unread newer_than:3d -from:noreply -from:no-reply -from:donotreply"
+        }
+      },
+      "id": "b92e9497-2df9-48e4-b50f-e4c09e34d59c",
+      "name": "📬 Get Unread Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-17840, -3328],
+      "credentials": {"gmailOAuth2": {"id": "ev0cwU3ZEXqPZ9wU", "name": "Gmail account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = $input.all();\nconst processedEmails = [];\n\nfor (const item of emails) {\n  const email = item.json;\n  \n  const headers = email.payload?.headers || [];\n  const from = headers.find(h => h.name === 'From')?.value || email.From || '';\n  const subject = headers.find(h => h.name === 'Subject')?.value || email.Subject || '';\n  const messageId = email.id;\n  const threadId = email.threadId;\n  \n  let senderEmail = '';\n  let senderName = '';\n  \n  const emailMatch = from.match(/<([^>]+)>/) || from.match(/([^\\s]+@[^\\s]+)/);\n  if (emailMatch) {\n    senderEmail = emailMatch[1].toLowerCase().trim();\n  }\n  \n  if (from.includes('<')) {\n    senderName = from.split('<')[0].trim().replace(/['\"]/g, '');\n  } else {\n    senderName = from.split('@')[0];\n  }\n  \n  let body = email.snippet || '';\n  \n  let skipReason = null;\n  \n  if (senderEmail.includes('noreply') || senderEmail.includes('no-reply')) {\n    skipReason = 'NoReply адрес';\n  } else if (senderEmail.includes('facebook')) {\n    skipReason = 'Facebook';\n  } else if (senderEmail.includes('workspace@google')) {\n    skipReason = 'Google Workspace';\n  } else if (senderEmail.includes('cryptomator.pro')) {\n    const isReply = subject && subject.toLowerCase().includes('re:');\n    if (!isReply) {\n      skipReason = 'Наше уведомление';\n    }\n  } else if (!body || body.length < 3) {\n    skipReason = 'Пустое письмо';\n  }\n  \n  if (skipReason) {\n    continue;\n  }\n  \n  const hasRussian = /[а-яА-ЯёЁ]/.test(body + subject);\n  const language = hasRussian ? 'ru' : 'en';\n  \n  processedEmails.push({\n    messageId: messageId,\n    threadId: threadId,\n    from: senderEmail,\n    senderName: senderName || 'Client',\n    subject: subject || 'No subject',\n    body: body.substring(0, 3000),\n    language: language,\n    timestamp: new Date(parseInt(email.internalDate || Date.now())).toISOString()\n  });\n}\n\nif (processedEmails.length === 0) {\n  return [];\n}\n\nreturn processedEmails.map(e => ({json: e}));"
+      },
+      "id": "d2899db2-3a76-4665-83c6-83bd1c483e6c",
+      "name": "📋 Process Incoming",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17648, -3328]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=WITH existing_conversation AS (\n    SELECT * FROM {{ $('⚙️ CONFIG').first().json.table_gmail_conversations }}\n    WHERE email = '{{ $json.from }}'\n    LIMIT 1\n)\nSELECT \n    COALESCE(thread_id, '{{ $json.threadId }}') as thread_id,\n    COALESCE(email, '{{ $json.from }}') as email,\n    COALESCE(messages::text, 'Новый клиент') as conversation_history,\n    COALESCE(lead_score, 0) as lead_score,\n    COALESCE(message_count, 0) as message_count,\n    '{{ $json.senderName }}' as full_name,\n    'email' as platform,\n    '{{ $json.language }}' as language\nFROM existing_conversation\nUNION ALL\nSELECT \n    '{{ $json.threadId }}' as thread_id,\n    '{{ $json.from }}' as email,\n    'Новый клиент' as conversation_history,\n    0 as lead_score,\n    0 as message_count,\n    '{{ $json.senderName }}' as full_name,\n    'email' as platform,\n    '{{ $json.language }}' as language\nWHERE NOT EXISTS (SELECT 1 FROM existing_conversation);",
+        "options": {}
+      },
+      "id": "49d74fd2-0721-48f6-a3ea-e08f7d1a7cd4",
+      "name": "📜 Get History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-17440, -3328],
+      "credentials": {"postgres": {"id": "dPjh4Kdb4nIbCTQG", "name": "Postgres account"}}
+    },
+    {
+      "parameters": {
+        "documentId": {"__rl": true, "value": "={{ $('⚙️ CONFIG').first().json.google_sheets_id }}", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "Лист1"},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.6,
+      "position": [-17008, -3136],
+      "id": "fae7fade-9c74-4f23-8ed2-03a1a70b4fff",
+      "name": "📊 Google Sheets ru",
+      "credentials": {"googleSheetsOAuth2Api": {"id": "DvPu60dZpHogNtbY", "name": "Google Sheets account"}}
+    },
+    {
+      "parameters": {
+        "jsCode": "const gmailResponse = $items(\"📤 Send Gmail Reply\")[0].json;\nconst parseData = $items(\"📝 Parse AI Reply\")[0].json;\n\nreturn [{\n  json: {\n    messageId: parseData.messageId || gmailResponse.messageId,\n    threadId: parseData.threadId || gmailResponse.threadId,\n    status: 'processed'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-18016, -2992],
+      "id": "3b04a944-286e-4b80-a9ed-36e146100d14",
+      "name": "🔗 Pass Message ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseData = $items(\"📝 Parse AI Reply\")[0].json;\nconst markAsReadData = $json;\n\nreturn [{\n  json: {\n    to: parseData.to,\n    senderName: parseData.senderName || parseData.to.split('@')[0],\n    subject: parseData.subject,\n    language: parseData.language || 'ru',\n    urgency: parseData.urgency || 'medium',\n    intent: parseData.intent || 'information',\n    leadScore: parseData.leadScore || 0,\n    internalNote: parseData.internalNote || 'Автоматический ответ отправлен',\n    followUpDays: parseData.followUpDays || 3\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-17616, -2992],
+      "id": "b6507e56-22f7-4a81-accf-156022f00eee",
+      "name": "📋 Prepare Notification Data"
+    },
+    {
+      "parameters": {"options": {}},
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-17472, -3328],
+      "id": "541173d3-74fa-413c-9415-5d18659b9e1e",
+      "name": "🔄 Loop Over Items"
+    },
+    {
+      "parameters": {"amount": 10},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-16560, -3312],
+      "id": "a749c9d7-5963-44d8-8191-de86dc300b01",
+      "name": "⏳ Wait",
+      "webhookId": "285307e1-14c7-4381-b783-7fd9d73dc07c"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "73212611-2a14-4a98-8587-14fed2aa3c0f", "leftValue": "={{ $json.emailContent }}", "rightValue": 50, "operator": {"type": "string", "operation": "notEmpty", "singleValue": true}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-16736, -3328],
+      "id": "cf502f39-55f6-4fdf-8210-8445012d908d",
+      "name": "🔀 If Valid"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "⏰ Schedule Check answer": {"main": [[{"node": "⚙️ CONFIG", "type": "main", "index": 0}]]},
+    "⚙️ CONFIG": {"main": [[{"node": "📬 Get Unread Emails", "type": "main", "index": 0}]]},
+    "🧠 Gemini Model Reply": {"ai_languageModel": [[{"node": "🤖 Gmail Reply Agent", "type": "ai_languageModel", "index": 0}]]},
+    "📝 Parse AI Reply": {"main": [[{"node": "🔀 If Valid", "type": "main", "index": 0}]]},
+    "📤 Send Gmail Reply": {"main": [[{"node": "🔗 Pass Message ID", "type": "main", "index": 0}]]},
+    "✅ Mark as Read": {"main": [[{"node": "📋 Prepare Notification Data", "type": "main", "index": 0}]]},
+    "📊 Prepare Telegram Notification": {"main": [[{"node": "📱 Notify Telegram", "type": "main", "index": 0}]]},
+    "📱 Notify Telegram": {"main": [[{"node": "🔄 Loop Over Items", "type": "main", "index": 0}]]},
+    "🤖 Gmail Reply Agent": {"main": [[{"node": "📝 Parse AI Reply", "type": "main", "index": 0}]]},
+    "📬 Get Unread Emails": {"main": [[{"node": "📋 Process Incoming", "type": "main", "index": 0}]]},
+    "📋 Process Incoming": {"main": [[{"node": "🔄 Loop Over Items", "type": "main", "index": 0}]]},
+    "📜 Get History": {"main": [[{"node": "🤖 Gmail Reply Agent", "type": "main", "index": 0}]]},
+    "📊 Google Sheets ru": {"ai_tool": [[{"node": "🤖 Gmail Reply Agent", "type": "ai_tool", "index": 0}]]},
+    "🔗 Pass Message ID": {"main": [[{"node": "✅ Mark as Read", "type": "main", "index": 0}]]},
+    "📋 Prepare Notification Data": {"main": [[{"node": "📊 Prepare Telegram Notification", "type": "main", "index": 0}]]},
+    "🔄 Loop Over Items": {"main": [[], [{"node": "📜 Get History", "type": "main", "index": 0}]]},
+    "⏳ Wait": {"main": [[{"node": "📬 Get Unread Emails", "type": "main", "index": 0}]]},
+    "🔀 If Valid": {"main": [[{"node": "📤 Send Gmail Reply", "type": "main", "index": 0}], [{"node": "⏳ Wait", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "production-v1",
+  "meta": {"instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"},
+  "id": "email-automation-main-2-ru",
+  "tags": []
+}
