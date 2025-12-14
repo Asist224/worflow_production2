@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## ⚙️ Email Settings Management - Settings Management\n\n### Description\nThis workflow manages email system settings:\n- Auto-analysis of email correspondence\n- Cleanup and archiving of old records\n- Automatic tasks scheduling\n\n---\n\n### 🔧 Setup\n\n1. **Open the `⚙️ CONFIG` node** and configure:\n   - `api_key` — your API key to protect the endpoint\n   - `rate_limit_window_ms` — rate limiting window (ms)\n   - `rate_limit_max_requests` — max requests in window\n   - `batch_analysis_webhook` — URL for batch analysis trigger\n   - PostgreSQL table names\n\n2. **Connect PostgreSQL** credential to DB nodes\n\n3. **Configure schedule** in Schedule Trigger nodes\n\n4. **Activate the workflow**\n\n---\n\n### 📡 API Endpoints\n\n#### 1. Get Auto Analysis Settings\n**GET** `/webhook/email-auto-analysis-settings`\n\n#### 2. Get Cleanup Settings\n**GET** `/webhook/email-cleanup-settings`\n\n#### 3. Update Cleanup Settings\n**POST** `/webhook/update-email-cleanup-settings`\n\n**Headers for all:**\n```\nx-api-key: your_api_key\n```\n\n---\n\n### ⏰ Automatic Tasks\n\n- **Batch Analysis** — every hour\n- **Cleanup** — daily at 3:00"
+        "content": "## ⚙️ Email Settings Management - Settings Management\n\n### Description\nThis workflow manages email system settings:\n- Auto-analysis of email correspondence\n- Cleanup and archiving of old records\n- Automatic tasks scheduling\n\n---\n\n### 🔧 Setup\n\n1. **Open the CONFIG nodes** for each chain and configure:\n   - `api_key` — your API key to protect the endpoint\n   - `rate_limit_window_ms` — rate limiting window (ms)\n   - `rate_limit_max_requests` — max requests in window\n   - `batch_analysis_webhook` — URL for batch analysis trigger\n   - PostgreSQL table names\n\n2. **Connect PostgreSQL** credential to DB nodes\n\n3. **Configure schedule** in Schedule Trigger nodes\n\n4. **Activate the workflow**\n\n---\n\n### 📡 API Endpoints\n\n#### 1. Get Auto Analysis Settings\n**GET** `/webhook/email-auto-analysis-settings`\n\n#### 2. Get Cleanup Settings\n**GET** `/webhook/email-cleanup-settings`\n\n#### 3. Update Cleanup Settings\n**POST** `/webhook/update-email-cleanup-settings`\n\n**Headers for all:**\n```\nx-api-key: your_api_key\n```\n\n---\n\n### ⏰ Automatic Tasks\n\n- **Batch Analysis** — every hour\n- **Cleanup** — daily at 3:00"
       },
       "id": "sticky-note-instructions",
       "name": "Sticky Note",
@@ -35,13 +35,123 @@
               "name": "rate_limit_max_requests",
               "value": 60,
               "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-auto",
+      "name": "⚙️ CONFIG (Auto)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max_requests",
+              "value": 60,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-cleanup",
+      "name": "⚙️ CONFIG (Cleanup)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max_requests",
+              "value": 60,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-update",
+      "name": "⚙️ CONFIG (Update)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
             },
             {
               "id": "batch-webhook",
               "name": "batch_analysis_webhook",
               "value": "https://your-n8n-domain.com/webhook/analyze-email-dialog",
               "type": "string"
-            },
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-batch",
+      "name": "⚙️ CONFIG (Batch)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
             {
               "id": "table-monitoring",
               "name": "table_email_monitoring",
@@ -64,13 +174,13 @@
         },
         "options": {}
       },
-      "id": "config-node",
-      "name": "⚙️ CONFIG",
+      "id": "config-cleanup-sched",
+      "name": "⚙️ CONFIG (Cleanup Sched)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -350,
-        200
+        0,
+        912
       ]
     },
     {
@@ -86,19 +196,19 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -144,
+        -200,
         -80
       ],
       "webhookId": "email-auto-analysis-settings-webhook"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🔐 UNIVERSAL PROTECTION: API KEY + RATE LIMITING\n// ============================================\n\n// Get settings from CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Auto Settings').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+        "jsCode": "// ============================================\n// 🔐 UNIVERSAL PROTECTION: API KEY + RATE LIMITING\n// ============================================\n\n// Get settings from CONFIG (passed through chain)\nconst config = {\n  api_key: $('⚙️ CONFIG (Auto)').first().json.api_key,\n  rate_limit_window_ms: $('⚙️ CONFIG (Auto)').first().json.rate_limit_window_ms,\n  rate_limit_max_requests: $('⚙️ CONFIG (Auto)').first().json.rate_limit_max_requests\n};\n\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Auto Settings').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true, config: config } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        16,
+        200,
         -80
       ],
       "id": "security-auto",
@@ -132,7 +242,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        176,
+        400,
         -80
       ],
       "id": "auth-auto",
@@ -149,7 +259,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        352,
+        600,
         16
       ],
       "id": "error-auto",
@@ -164,7 +274,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        352,
+        600,
         -144
       ]
     },
@@ -179,7 +289,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        544,
+        800,
         -144
       ]
     },
@@ -196,19 +306,19 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -144,
+        -200,
         200
       ],
       "webhookId": "email-cleanup-settings-webhook"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🔐 UNIVERSAL PROTECTION: API KEY + RATE LIMITING\n// ============================================\n\n// Get settings from CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Cleanup Settings').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+        "jsCode": "// ============================================\n// 🔐 UNIVERSAL PROTECTION: API KEY + RATE LIMITING\n// ============================================\n\n// Get settings from CONFIG (passed through chain)\nconst config = {\n  api_key: $('⚙️ CONFIG (Cleanup)').first().json.api_key,\n  rate_limit_window_ms: $('⚙️ CONFIG (Cleanup)').first().json.rate_limit_window_ms,\n  rate_limit_max_requests: $('⚙️ CONFIG (Cleanup)').first().json.rate_limit_max_requests\n};\n\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Cleanup Settings').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true, config: config } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        16,
+        200,
         200
       ],
       "id": "security-cleanup",
@@ -242,7 +352,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        176,
+        400,
         200
       ],
       "id": "auth-cleanup",
@@ -259,7 +369,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        352,
+        600,
         296
       ],
       "id": "error-cleanup",
@@ -274,7 +384,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        352,
+        600,
         136
       ]
     },
@@ -289,7 +399,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        544,
+        800,
         136
       ]
     },
@@ -307,19 +417,19 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -144,
+        -200,
         480
       ],
       "webhookId": "update-email-cleanup-settings-webhook"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🔐 UNIVERSAL PROTECTION: API KEY + RATE LIMITING\n// ============================================\n\n// Get settings from CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Update Cleanup').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+        "jsCode": "// ============================================\n// 🔐 UNIVERSAL PROTECTION: API KEY + RATE LIMITING\n// ============================================\n\n// Get settings from CONFIG (passed through chain)\nconst config = {\n  api_key: $('⚙️ CONFIG (Update)').first().json.api_key,\n  rate_limit_window_ms: $('⚙️ CONFIG (Update)').first().json.rate_limit_window_ms,\n  rate_limit_max_requests: $('⚙️ CONFIG (Update)').first().json.rate_limit_max_requests\n};\n\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Update Cleanup').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true, config: config } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        16,
+        200,
         480
       ],
       "id": "security-update",
@@ -353,7 +463,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        176,
+        400,
         480
       ],
       "id": "auth-update",
@@ -370,7 +480,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        352,
+        600,
         576
       ],
       "id": "error-update",
@@ -385,7 +495,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        352,
+        600,
         416
       ]
     },
@@ -400,7 +510,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        544,
+        800,
         416
       ]
     },
@@ -419,20 +529,20 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
       "position": [
-        -144,
+        -200,
         720
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('⚙️ CONFIG').first().json.batch_analysis_webhook }}",
+        "url": "={{ $json.batch_analysis_webhook }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $('⚙️ CONFIG').first().json.api_key }}"
+              "value": "={{ $json.api_key }}"
             }
           ]
         },
@@ -453,7 +563,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        64,
+        200,
         720
       ]
     },
@@ -472,14 +582,14 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
       "position": [
-        -144,
+        -200,
         912
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=-- Archive old email records\nBEGIN;\n\n-- Archive old records from email_monitoring\nINSERT INTO {{ $('⚙️ CONFIG').first().json.table_email_monitoring_archive }} \nSELECT * FROM {{ $('⚙️ CONFIG').first().json.table_email_monitoring }} \nWHERE \n  (last_activity_time < NOW() - INTERVAL '90 days')\n  OR (lead_score < 20 AND last_activity_time < NOW() - INTERVAL '30 days')\n  OR (status = 'resolved' AND last_activity_time < NOW() - INTERVAL '60 days');\n\n-- Delete archived records\nDELETE FROM {{ $('⚙️ CONFIG').first().json.table_email_monitoring }} \nWHERE \n  (last_activity_time < NOW() - INTERVAL '90 days')\n  OR (lead_score < 20 AND last_activity_time < NOW() - INTERVAL '30 days')\n  OR (status = 'resolved' AND last_activity_time < NOW() - INTERVAL '60 days');\n\n-- Clean old logs\nDELETE FROM {{ $('⚙️ CONFIG').first().json.table_email_processing_log }} \nWHERE processed_at < NOW() - INTERVAL '30 days';\n\nCOMMIT;\n\nSELECT \n  'cleanup_completed' as status,\n  COUNT(*) as archived_count\nFROM {{ $('⚙️ CONFIG').first().json.table_email_monitoring_archive }}\nWHERE created_at >= NOW() - INTERVAL '1 minute';",
+        "query": "=-- Archive old email records\nBEGIN;\n\n-- Archive old records from email_monitoring\nINSERT INTO {{ $json.table_email_monitoring_archive }} \nSELECT * FROM {{ $json.table_email_monitoring }} \nWHERE \n  (last_activity_time < NOW() - INTERVAL '90 days')\n  OR (lead_score < 20 AND last_activity_time < NOW() - INTERVAL '30 days')\n  OR (status = 'resolved' AND last_activity_time < NOW() - INTERVAL '60 days');\n\n-- Delete archived records\nDELETE FROM {{ $json.table_email_monitoring }} \nWHERE \n  (last_activity_time < NOW() - INTERVAL '90 days')\n  OR (lead_score < 20 AND last_activity_time < NOW() - INTERVAL '30 days')\n  OR (status = 'resolved' AND last_activity_time < NOW() - INTERVAL '60 days');\n\n-- Clean old logs\nDELETE FROM {{ $json.table_email_processing_log }} \nWHERE processed_at < NOW() - INTERVAL '30 days';\n\nCOMMIT;\n\nSELECT \n  'cleanup_completed' as status,\n  COUNT(*) as archived_count\nFROM {{ $json.table_email_monitoring_archive }}\nWHERE created_at >= NOW() - INTERVAL '1 minute';",
         "options": {}
       },
       "id": "8612c9fa-5c5f-4e14-bf10-829ca3eb4154",
@@ -487,7 +597,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        64,
+        200,
         912
       ],
       "credentials": {
@@ -500,38 +610,18 @@
   ],
   "pinData": {},
   "connections": {
-    "⚙️ CONFIG": {
+    "🌐 Webhook: Auto Settings": {
       "main": [
         [
           {
-            "node": "🌐 Webhook: Auto Settings",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "🌐 Webhook: Cleanup Settings",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "🌐 Webhook: Update Cleanup",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "⏰ Auto Analysis Schedule",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "⏰ Cleanup Schedule",
+            "node": "⚙️ CONFIG (Auto)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "🌐 Webhook: Auto Settings": {
+    "⚙️ CONFIG (Auto)": {
       "main": [
         [
           {
@@ -586,6 +676,17 @@
       "main": [
         [
           {
+            "node": "⚙️ CONFIG (Cleanup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ CONFIG (Cleanup)": {
+      "main": [
+        [
+          {
             "node": "🔐 Security (Cleanup)",
             "type": "main",
             "index": 0
@@ -634,6 +735,17 @@
       ]
     },
     "🌐 Webhook: Update Cleanup": {
+      "main": [
+        [
+          {
+            "node": "⚙️ CONFIG (Update)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ CONFIG (Update)": {
       "main": [
         [
           {
@@ -688,6 +800,17 @@
       "main": [
         [
           {
+            "node": "⚙️ CONFIG (Batch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ CONFIG (Batch)": {
+      "main": [
+        [
+          {
             "node": "🚀 Trigger Batch Analysis",
             "type": "main",
             "index": 0
@@ -696,6 +819,17 @@
       ]
     },
     "⏰ Cleanup Schedule": {
+      "main": [
+        [
+          {
+            "node": "⚙️ CONFIG (Cleanup Sched)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ CONFIG (Cleanup Sched)": {
       "main": [
         [
           {
