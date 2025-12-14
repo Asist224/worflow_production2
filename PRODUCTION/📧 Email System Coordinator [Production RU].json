@@ -1,5 +1,5 @@
 {
-  "name": "📧 Email System Coordinator [Production]",
+  "name": "📧 Email System Coordinator [Production RU]",
   "nodes": [
     {
       "parameters": {
@@ -19,8 +19,19 @@
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={\n  \"company_domain\": \"your-company.com\",\n  \"company_name\": \"Your Company\",\n  \"company_email\": \"support@your-company.com\",\n  \"api_key\": \"YOUR-API-KEY-CHANGE-ME\",\n  \"webhook_base_url\": \"https://your-n8n.com\",\n  \n  \"table_processing_log\": \"email_processing_log\",\n  \"table_conversations\": \"gmail_conversations\",\n  \"table_monitoring\": \"email_monitoring\",\n  \"table_analysis\": \"email_dialog_analysis\"\n}",
+        "assignments": {
+          "assignments": [
+            {"id": "company-domain", "name": "company_domain", "value": "your-company.com", "type": "string"},
+            {"id": "company-name", "name": "company_name", "value": "Your Company", "type": "string"},
+            {"id": "company-email", "name": "company_email", "value": "support@your-company.com", "type": "string"},
+            {"id": "api-key", "name": "api_key", "value": "YOUR-API-KEY-CHANGE-ME", "type": "string"},
+            {"id": "webhook-url", "name": "webhook_base_url", "value": "https://your-n8n.com", "type": "string"},
+            {"id": "table-log", "name": "table_processing_log", "value": "email_processing_log", "type": "string"},
+            {"id": "table-conv", "name": "table_conversations", "value": "gmail_conversations", "type": "string"},
+            {"id": "table-mon", "name": "table_monitoring", "value": "email_monitoring", "type": "string"},
+            {"id": "table-analysis", "name": "table_analysis", "value": "email_dialog_analysis", "type": "string"}
+          ]
+        },
         "options": {}
       },
       "id": "e773bbc5-a17b-486c-85ff-e93bfe7b817b",
