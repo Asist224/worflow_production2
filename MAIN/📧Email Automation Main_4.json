@@ -1,0 +1,479 @@
+{
+  "name": "📧Email Automation Main_4",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "00af2ac0-7f8c-4566-a865-06092fe58f80",
+      "name": "SendPulse Sync Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -18960,
+        -3728
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Получаем всех пользователей из leads книг для проверки\nSELECT DISTINCT \n    ss.email,\n    ss.addressbook_id,\n    ss.addressbook_name,\n    CASE \n        WHEN ss.addressbook_name LIKE '%_ru' THEN 'ru'\n        ELSE 'en'\n    END as language\nFROM sendpulse_sync ss\nWHERE ss.sync_status IN ('added', 'updated')\n  AND ss.addressbook_name IN ('leads_ru', 'leads_en')\n  AND ss.sync_date > NOW() - INTERVAL '30 days'\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "167ec0d5-8e7b-4189-83cd-3e31a1cfbd39",
+      "name": "Get Leads to Check",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -18416,
+        -3728
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "04509480-b3f1-40a4-a616-e713694df534",
+      "name": "Split Leads Batch",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -18224,
+        -3728
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Подготовка данных для проверки\nconst currentItem = $input.first().json;\nconst sendPulseToken = $items(\"Get SendPulse Token1\")[0].json;\n\n// ID адресных книг\nconst ADDRESSBOOKS = {\n  'customers_ru': 1590611,\n  'customers_en': 1591645\n};\n\n// Определяем ID книги клиентов на основе языка\nconst customersBookId = currentItem.language === 'ru' ? \n  ADDRESSBOOKS.customers_ru : ADDRESSBOOKS.customers_en;\n\nconsole.log('Checking email:', currentItem.email);\nconsole.log('Customer book ID:', customersBookId);\nconsole.log('Lead book ID:', currentItem.addressbook_id);\n\nreturn [{\n  json: {\n    ...currentItem,\n    token: sendPulseToken.access_token,\n    tokenType: sendPulseToken.token_type || 'Bearer',\n    customersBookId: customersBookId\n  }\n}];"
+      },
+      "id": "3e1644d8-d806-429f-b658-e03efd48d223",
+      "name": "Prepare Check Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -17936,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Проверяем результат запроса\nconst response = $input.first().json;\nconst checkData = $items(\"Prepare Check Data\")[0].json;\n\nconsole.log('Check response:', JSON.stringify(response, null, 2));\n\n// Проверяем, является ли пользователь клиентом\nlet isCustomer = false;\n\n// Если есть данные контакта (имя, переменные и т.д.) - значит email найден\nif (response && response.email === checkData.email) {\n  isCustomer = true;\n} else if (response.variables && Array.isArray(response.variables)) {\n  // Альтернативная проверка - если есть массив переменных\n  isCustomer = true;\n} else if (response.abook_id) {\n  // Или если есть ID адресной книги\n  isCustomer = true;\n}\n\nconsole.log(`Email ${checkData.email} is customer: ${isCustomer}`);\n\nreturn [{\n  json: {\n    ...checkData,\n    isCustomer: isCustomer,\n    checkResponse: response\n  }\n}];"
+      },
+      "id": "7cbe62eb-b58f-4565-b263-9967b6b2fe61",
+      "name": "Process Check Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -17488,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isCustomer }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "id": "29e0950c-37f1-422c-9986-afc9f9b588a4"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cf364c28-82ff-4193-adb5-c15af51b0dcb",
+      "name": "Became Customer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -17296,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $json.addressbook_id }}/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.tokenType }} {{ $json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"emails\": [\"{{ $json.email }}\"]\n}",
+        "options": {}
+      },
+      "id": "be7f4ef2-9754-4f17-916d-7d07da0af520",
+      "name": "Remove from Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -17120,
+        -3824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Логируем, что пользователь еще не клиент\nconst data = $input.first().json;\n\nconsole.log(`Email ${data.email} is still a lead, keeping in leads list`);\n\n// Передаем данные обратно в Split Batch для продолжения цикла\nreturn [{\n  json: {\n    processed: true,\n    email: data.email,\n    stillLead: true\n  }\n}];"
+      },
+      "id": "2ba8f3d4-d9bb-4e5c-a8ae-ac9c8e67069e",
+      "name": "Log Still Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -17120,
+        -3664
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Подготовка данных для SendPulse OAuth\nconst SENDPULSE_API_ID = 'e00470078ad763936dc9578bbe148414';\nconst SENDPULSE_API_SECRET = 'e98d876685d4779e7248fd6a9cc65e13';\n\n// Формируем данные для получения токена\nreturn [{\n  json: {\n    grant_type: 'client_credentials',\n    client_id: SENDPULSE_API_ID,\n    client_secret: SENDPULSE_API_SECRET\n  }\n}];"
+      },
+      "id": "4ace32b8-c5eb-435b-a223-71f2f0a8880a",
+      "name": "Prepare SendPulse Auth1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -18784,
+        -3728
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.sendpulse.com/oauth/access_token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "={{ $json.grant_type }}"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ $json.client_id }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $json.client_secret }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "27aed98c-b10c-43dd-b4b5-b8dd44a34ca5",
+      "name": "Get SendPulse Token1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -18608,
+        -3728
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Логируем успешную очистку\nconst result = $input.first().json;\n\nconsole.log(`Successfully moved to customers: ${result.email}`);\nconsole.log(`Removed from addressbook: ${result.addressbook_id}`);\nconsole.log(`Status updated at: ${result.sync_date}`);\n\n// Передаем данные обратно в Split Batch для продолжения цикла\nreturn [{\n  json: {\n    processed: true,\n    email: result.email,\n    movedAt: result.sync_date\n  }\n}];"
+      },
+      "id": "a0818ed9-3fdf-4b6c-957b-c151a4f024f5",
+      "name": "Log Success1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16560,
+        -3824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем результаты синхронизации\nconst totalProcessed = $items(\"Get Leads to Check\").length;\n\n// Подсчитываем результаты (если нужно)\nconst summary = {\n  status: 'completed',\n  totalProcessed: totalProcessed,\n  completedAt: new Date().toISOString(),\n  message: `SendPulse sync completed. Processed ${totalProcessed} lead(s).`\n};\n\nconsole.log('=== SYNC COMPLETE ===');\nconsole.log(summary.message);\nconsole.log('====================');\n\nreturn [{json: summary}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -18016,
+        -3904
+      ],
+      "id": "f2936649-f7fb-4b82-9e45-2c660c9a659c",
+      "name": "Sync Complete Report"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.sendpulse.com/addressbooks/{{ $json.customersBookId }}/emails/{{ $json.email }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.tokenType }} {{ $json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "259bfaf6-5519-42b8-9667-9fc7dc294d1f",
+      "name": "Check Customer Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -17696,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sendpulse_sync\nSET \n    sync_status = 'moved_to_customers',\n    sync_date = NOW()\nWHERE email = '{{ $json.email }}'\n  AND addressbook_id = {{ $json.addressbook_id }}\nRETURNING *;",
+        "options": {}
+      },
+      "id": "d13e0635-0802-4257-ac60-4bb195e91b7a",
+      "name": "Remove from Leads2",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16752,
+        -3824
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dPjh4Kdb4nIbCTQG",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Получаем данные из начальных узлов\nconst checkData = $items(\"Process Check Result\")[0].json;\nconst removeResult = $input.first().json;\n\n// Подготавливаем данные для Update Sync Status\nreturn [{\n  json: {\n    email: checkData.email,\n    addressbook_id: checkData.addressbook_id,\n    removeResult: removeResult.result || true,\n    status: 'moved_to_customers'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16944,
+        -3824
+      ],
+      "id": "ef4c53e3-bf75-4306-b6a5-f2eb4d44d68f",
+      "name": "Prepare Update Data1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "SendPulse Sync Schedule": {
+      "main": [
+        [
+          {
+            "node": "Prepare SendPulse Auth1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Leads to Check": {
+      "main": [
+        [
+          {
+            "node": "Split Leads Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Leads Batch": {
+      "main": [
+        [
+          {
+            "node": "Sync Complete Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Check Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Check Data": {
+      "main": [
+        [
+          {
+            "node": "Check Customer Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Check Result": {
+      "main": [
+        [
+          {
+            "node": "Became Customer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Became Customer?": {
+      "main": [
+        [
+          {
+            "node": "Remove from Leads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Still Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove from Leads": {
+      "main": [
+        [
+          {
+            "node": "Prepare Update Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Still Lead": {
+      "main": [
+        [
+          {
+            "node": "Split Leads Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare SendPulse Auth1": {
+      "main": [
+        [
+          {
+            "node": "Get SendPulse Token1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get SendPulse Token1": {
+      "main": [
+        [
+          {
+            "node": "Get Leads to Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success1": {
+      "main": [
+        [
+          {
+            "node": "Split Leads Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Customer Status": {
+      "main": [
+        [
+          {
+            "node": "Process Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove from Leads2": {
+      "main": [
+        [
+          {
+            "node": "Log Success1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Update Data1": {
+      "main": [
+        [
+          {
+            "node": "Remove from Leads2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3ad52861-32ba-4dbb-9bbb-26718e507117",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9a2a948e1b1119e76dce477f4f08641c41898f344f4216cb90098437b1dcaf00"
+  },
+  "id": "kwbiltkxVdA5HWbR",
+  "tags": []
+}
