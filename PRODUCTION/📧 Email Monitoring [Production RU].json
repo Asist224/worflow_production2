@@ -46,8 +46,34 @@
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={\n  \"api_key\": \"24fs-$r4d-defd-77ds-7eds\",\n  \"rate_limit_window_ms\": 60000,\n  \"rate_limit_max\": 60,\n  \"table_email_monitoring\": \"email_monitoring\"\n}",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "table-monitoring",
+              "name": "table_email_monitoring",
+              "value": "email_monitoring",
+              "type": "string"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "config-save-monitoring",
@@ -128,8 +154,40 @@
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={\n  \"api_key\": \"24fs-$r4d-defd-77ds-7eds\",\n  \"rate_limit_window_ms\": 60000,\n  \"rate_limit_max\": 60,\n  \"table_email_monitoring\": \"email_monitoring\",\n  \"table_email_dialog_analysis\": \"email_dialog_analysis\"\n}",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "table-monitoring",
+              "name": "table_email_monitoring",
+              "value": "email_monitoring",
+              "type": "string"
+            },
+            {
+              "id": "table-analysis",
+              "name": "table_email_dialog_analysis",
+              "value": "email_dialog_analysis",
+              "type": "string"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "config-get-monitoring",
@@ -274,8 +332,34 @@
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={\n  \"api_key\": \"24fs-$r4d-defd-77ds-7eds\",\n  \"rate_limit_window_ms\": 60000,\n  \"rate_limit_max\": 60,\n  \"table_gmail_conversations\": \"gmail_conversations\"\n}",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "table-conversations",
+              "name": "table_gmail_conversations",
+              "value": "gmail_conversations",
+              "type": "string"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "config-get-dialog",
