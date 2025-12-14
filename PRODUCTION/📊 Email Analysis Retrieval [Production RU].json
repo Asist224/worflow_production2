@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 📊 Email Analysis Retrieval - Получение Результатов Анализа\n\n### Описание\nЭтот workflow предоставляет API для получения сохраненных результатов\nанализа email-переписки: эмоциональный тон, lead scoring, рекомендации.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узел `⚙️ CONFIG`** и настройте:\n   - `api_key` — ваш API ключ для защиты endpoint\n   - `rate_limit_window_ms` — окно для rate limiting (мс)\n   - `rate_limit_max_requests` — максимум запросов в окне\n   - Название таблицы PostgreSQL\n\n2. **Подключите PostgreSQL** credential к узлам БД\n\n3. **Активируйте workflow**\n\n---\n\n### 📡 API Endpoints\n\n#### 1. Получить анализ одного email\n**GET** `/webhook/get-email-analysis?email=client@example.com`\n\n**Headers:**\n```\nx-api-key: ваш_api_key\n```\n\n**Query параметры:**\n- `email` — email клиента\n- `type` — тип анализа (default: `single`)\n\n---\n\n#### 2. Получить все анализы\n**GET** `/webhook/get-all-email-analysis`\n\n**Headers:**\n```\nx-api-key: ваш_api_key\n```\n\n**Query параметры (опционально):**\n- `days` — за сколько дней (default: все)\n- `language` — фильтр по языку\n\n---\n\n### 📊 Формат ответа\n\n```json\n{\n  \"found\": true,\n  \"email\": \"client@example.com\",\n  \"emotionalTone\": {...},\n  \"leadScoring\": {...},\n  \"recommendations\": [...]\n}\n```"
+        "content": "## 📊 Email Analysis Retrieval - Получение Результатов Анализа\n\n### Описание\nЭтот workflow предоставляет API для получения сохраненных результатов\nанализа email-переписки: эмоциональный тон, lead scoring, рекомендации.\n\n---\n\n### 🔧 Настройка\n\n1. **Откройте узлы `⚙️ CONFIG (Single)` и `⚙️ CONFIG (All)`** и настройте:\n   - `api_key` — ваш API ключ для защиты endpoint\n   - `rate_limit_window_ms` — окно для rate limiting (мс)\n   - `rate_limit_max_requests` — максимум запросов в окне\n   - Название таблицы PostgreSQL\n\n2. **Подключите PostgreSQL** credential к узлам БД\n\n3. **Активируйте workflow**\n\n---\n\n### 📡 API Endpoints\n\n#### 1. Получить анализ одного email\n**GET** `/webhook/get-email-analysis?email=client@example.com`\n\n**Headers:**\n```\nx-api-key: ваш_api_key\n```\n\n**Query параметры:**\n- `email` — email клиента\n- `type` — тип анализа (default: `single`)\n\n---\n\n#### 2. Получить все анализы\n**GET** `/webhook/get-all-email-analysis`\n\n**Headers:**\n```\nx-api-key: ваш_api_key\n```\n\n**Query параметры (опционально):**\n- `days` — за сколько дней (default: все)\n- `language` — фильтр по языку\n\n---\n\n### 📊 Формат ответа\n\n```json\n{\n  \"found\": true,\n  \"email\": \"client@example.com\",\n  \"emotionalTone\": {...},\n  \"leadScoring\": {...},\n  \"recommendations\": [...]\n}\n```"
       },
       "id": "sticky-note-instructions",
       "name": "Sticky Note",
@@ -46,13 +46,54 @@
         },
         "options": {}
       },
-      "id": "config-node",
-      "name": "⚙️ CONFIG",
+      "id": "config-single",
+      "name": "⚙️ CONFIG (Single)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -320,
-        32
+        0,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "24fs-$r4d-defd-77ds-7eds",
+              "type": "string"
+            },
+            {
+              "id": "rate-window",
+              "name": "rate_limit_window_ms",
+              "value": 60000,
+              "type": "number"
+            },
+            {
+              "id": "rate-max",
+              "name": "rate_limit_max_requests",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "table-analysis",
+              "name": "table_email_dialog_analysis",
+              "value": "email_dialog_analysis",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-all",
+      "name": "⚙️ CONFIG (All)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        208
       ]
     },
     {
@@ -68,19 +109,19 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -144,
+        -200,
         -144
       ],
       "webhookId": "get-email-analysis-webhook"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Get Single Analysis').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG (переданы по цепочке)\nconst config = {\n  api_key: $('⚙️ CONFIG (Single)').first().json.api_key,\n  rate_limit_window_ms: $('⚙️ CONFIG (Single)').first().json.rate_limit_window_ms,\n  rate_limit_max_requests: $('⚙️ CONFIG (Single)').first().json.rate_limit_max_requests,\n  table_email_dialog_analysis: $('⚙️ CONFIG (Single)').first().json.table_email_dialog_analysis\n};\n\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Get Single Analysis').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true, config: config } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        16,
+        200,
         -144
       ],
       "id": "96443ee0-1161-4c87-aed4-ab85ace71bea",
@@ -114,7 +155,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        160,
+        400,
         -144
       ],
       "id": "9cf3bea6-0c90-416f-b8fe-1fc7677aa653",
@@ -131,7 +172,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        352,
+        600,
         -32
       ],
       "id": "62348eb8-3d12-4dd7-a819-95dac6bd63d0",
@@ -140,7 +181,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT \n    email,\n    thread_id,\n    user_name,\n    analysis_type,\n    language,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    statistics,\n    satisfaction_percentage,\n    lead_scoring,\n    created_at,\n    updated_at\nFROM {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }} \nWHERE email = '{{ $json.query.email }}' \nAND analysis_type = '{{ $json.query.type || 'single' }}' \nORDER BY created_at DESC \nLIMIT 1",
+        "query": "=SELECT \n    email,\n    thread_id,\n    user_name,\n    analysis_type,\n    language,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    statistics,\n    satisfaction_percentage,\n    lead_scoring,\n    created_at,\n    updated_at\nFROM {{ $json.config.table_email_dialog_analysis }} \nWHERE email = '{{ $json.query.email }}' \nAND analysis_type = '{{ $json.query.type || 'single' }}' \nORDER BY created_at DESC \nLIMIT 1",
         "options": {}
       },
       "id": "1b11646e-ece6-4549-9af7-451683ece96f",
@@ -148,7 +189,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        336,
+        600,
         -208
       ],
       "credentials": {
@@ -167,7 +208,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        528,
+        800,
         -208
       ]
     },
@@ -182,7 +223,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        736,
+        1000,
         -208
       ]
     },
@@ -199,19 +240,19 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -144,
+        -200,
         208
       ],
       "webhookId": "get-all-email-analysis-webhook"
     },
     {
       "parameters": {
-        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG\nconst config = $('⚙️ CONFIG').first().json;\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Get All Analysis').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true } }];"
+        "jsCode": "// ============================================\n// 🔐 УНИВЕРСАЛЬНАЯ ЗАЩИТА: API KEY + RATE LIMITING\n// ============================================\n\n// Получаем настройки из CONFIG (переданы по цепочке)\nconst config = {\n  api_key: $('⚙️ CONFIG (All)').first().json.api_key,\n  rate_limit_window_ms: $('⚙️ CONFIG (All)').first().json.rate_limit_window_ms,\n  rate_limit_max_requests: $('⚙️ CONFIG (All)').first().json.rate_limit_max_requests,\n  table_email_dialog_analysis: $('⚙️ CONFIG (All)').first().json.table_email_dialog_analysis\n};\n\nconst API_KEY = config.api_key;\nconst RATE_LIMIT_WINDOW_MS = config.rate_limit_window_ms;\nconst RATE_LIMIT_MAX_REQUESTS = config.rate_limit_max_requests;\n\nconst inputData = $('🌐 Webhook: Get All Analysis').item.json;\nconst body = inputData.body || {};\nconst headers = inputData.headers || {};\nconst query = inputData.query || {};\nconst clientIP = headers['x-real-ip'] || headers['x-forwarded-for'] || headers['cf-connecting-ip'] || 'unknown';\nconst now = Date.now();\n\n// RATE LIMITING\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.rateLimits) { staticData.rateLimits = {}; }\nfor (const ip in staticData.rateLimits) {\n  if (now - staticData.rateLimits[ip].firstRequest > RATE_LIMIT_WINDOW_MS) {\n    delete staticData.rateLimits[ip];\n  }\n}\nif (!staticData.rateLimits[clientIP]) {\n  staticData.rateLimits[clientIP] = { count: 1, firstRequest: now };\n} else {\n  staticData.rateLimits[clientIP].count++;\n  if (staticData.rateLimits[clientIP].count > RATE_LIMIT_MAX_REQUESTS) {\n    return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Too many requests', details: `Limit: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`, status: 429, retryAfter: Math.ceil((staticData.rateLimits[clientIP].firstRequest + RATE_LIMIT_WINDOW_MS - now) / 1000) } } }];\n  }\n}\n\n// API KEY CHECK\nconst providedKey = headers['x-api-key'] || body.apiKey || query.apiKey || '';\nif (!providedKey) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'API key not provided', status: 401 } } }];\n}\nif (providedKey !== API_KEY) {\n  return [{ json: { ...inputData, authorized: false, config: config, error: { success: false, error: 'Invalid API key', status: 401 } } }];\n}\n\nreturn [{ json: { ...inputData, authorized: true, config: config } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        32,
+        200,
         208
       ],
       "id": "ed82d0cf-5ef8-4f85-9bd4-6d6a75456b1e",
@@ -245,7 +286,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        192,
+        400,
         208
       ],
       "id": "dfc56595-b71b-43eb-9e78-8744c551ec79",
@@ -262,7 +303,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        368,
+        600,
         320
       ],
       "id": "ef7a8bd9-a672-4cf9-a0e0-0b9c2361938a",
@@ -271,7 +312,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT DISTINCT ON (email) \n    email,\n    thread_id,\n    user_name,\n    analysis_type,\n    language,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    statistics,\n    satisfaction_percentage,\n    lead_scoring,\n    created_at,\n    updated_at\nFROM {{ $('⚙️ CONFIG').first().json.table_email_dialog_analysis }} \nWHERE analysis_type = 'single'\n    {{ $json.query?.days ? \"AND created_at >= NOW() - INTERVAL '\" + $json.query.days + \" days'\" : \"\" }}\n    {{ $json.query?.language ? \"AND language = '\" + $json.query.language + \"'\" : \"\" }}\nORDER BY email, created_at DESC",
+        "query": "=SELECT DISTINCT ON (email) \n    email,\n    thread_id,\n    user_name,\n    analysis_type,\n    language,\n    emotional_tone,\n    customer_needs,\n    missed_opportunities,\n    recommendations,\n    statistics,\n    satisfaction_percentage,\n    lead_scoring,\n    created_at,\n    updated_at\nFROM {{ $json.config.table_email_dialog_analysis }} \nWHERE analysis_type = 'single'\n    {{ $json.query?.days ? \"AND created_at >= NOW() - INTERVAL '\" + $json.query.days + \" days'\" : \"\" }}\n    {{ $json.query?.language ? \"AND language = '\" + $json.query.language + \"'\" : \"\" }}\nORDER BY email, created_at DESC",
         "options": {}
       },
       "id": "752b2232-158b-4c55-8cf3-f742d37952dd",
@@ -279,7 +320,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        368,
+        600,
         144
       ],
       "credentials": {
@@ -298,7 +339,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
+        800,
         144
       ]
     },
@@ -313,30 +354,25 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        768,
+        1000,
         144
       ]
     }
   ],
   "pinData": {},
   "connections": {
-    "⚙️ CONFIG": {
+    "🌐 Webhook: Get Single Analysis": {
       "main": [
         [
           {
-            "node": "🌐 Webhook: Get Single Analysis",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "🌐 Webhook: Get All Analysis",
+            "node": "⚙️ CONFIG (Single)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "🌐 Webhook: Get Single Analysis": {
+    "⚙️ CONFIG (Single)": {
       "main": [
         [
           {
@@ -399,6 +435,17 @@
       ]
     },
     "🌐 Webhook: Get All Analysis": {
+      "main": [
+        [
+          {
+            "node": "⚙️ CONFIG (All)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ CONFIG (All)": {
       "main": [
         [
           {
